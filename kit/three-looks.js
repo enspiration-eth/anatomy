@@ -97,14 +97,14 @@ const INK = { dark: { ink: "#e6e6e6", faint: "#8a8a82", face: "#1d1d1c", paper: 
 export const TEXTURES = {
   // Brushed metal: fine streaks along u. The streaks live in the roughness and bump maps as well as the colour,
   // so the highlight stretches across the grain the way a real brushed surface's does.
-  brushed({ color, seed = 3, size = 512, theme }) {
+  brushed({ color, seed = 3, size = 1024, theme }) {
     color ??= theme === "light" ? "#d2d5d8" : "#6c7076"; // a theme-aware default, like the tones
     const [c, g] = canvasOf(size), [r, gr] = canvasOf(size), rnd = seeded(seed);
     g.fillStyle = color; g.fillRect(0, 0, size, size);
     gr.fillStyle = "#8c8c8c"; gr.fillRect(0, 0, size, size);
-    for (let i = 0; i < size * 3; i++) {
+    for (let i = 0; i < size * 5; i++) {
       const y = rnd() * size, len = size * (0.2 + rnd() * 0.8), x = rnd() * size, v = rnd();
-      g.fillStyle = `rgba(${v > 0.5 ? "255,255,255" : "0,0,0"},${0.04 + rnd() * 0.07})`;
+      g.fillStyle = `rgba(${v > 0.5 ? "255,255,255" : "0,0,0"},${0.025 + rnd() * 0.05})`;
       g.fillRect(x, y, len, 1); g.fillRect(x - size, y, len, 1);
       gr.fillStyle = `rgba(${v > 0.5 ? "255,255,255" : "0,0,0"},${0.1 + rnd() * 0.2})`;
       gr.fillRect(x, y, len, 1); gr.fillRect(x - size, y, len, 1);
@@ -169,6 +169,14 @@ export const TEXTURES = {
     lines.forEach((line, i) => g.fillText(line, 28, 30 + h * 0.26 + i * h * 0.15));
     return { map: tex(c, { repeat: false }), plain: true };
   },
+  // A key legend or engraved glyph: the text alone on a transparent ground (alpha-tested, so no sorting).
+  glyph({ text = "", ink = "#26261f", size = 64, font = 0.66 }) {
+    const [c, g] = canvasOf(size);
+    g.fillStyle = ink; g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = `700 ${Math.round(size * font * (text.length > 2 ? 0.7 : 1))}px ui-monospace, Menlo, monospace`;
+    g.fillText(text, size / 2, size / 2 + size * 0.03);
+    return { map: tex(c, { repeat: false }), plain: true, alphaTest: 0.25 };
+  },
   // A printed circuit board: FR-4 green, copper traces on a 45-degree router grid, pads, silkscreen outlines.
   pcb({ seed = 7, size = 1024, theme }) {
     const [c, g] = canvasOf(size), [b, gb] = canvasOf(size), rnd = seeded(seed);
@@ -204,11 +212,12 @@ export const TEXTURES = {
     return { map: tex(c), plain: true };
   },
   // Wood: growth rings stretched along u with a little waviness, for cabinets, benches and handles.
-  wood({ seed = 5, size = 512, color = "#6b4a32", theme }) {
+  wood({ seed = 5, size = 1024, color = "#6b4a32", theme, rings = 48 }) {
     const [c, g] = canvasOf(size), rnd = seeded(seed);
     g.fillStyle = color; g.fillRect(0, 0, size, size);
+    const f = (rings * Math.PI * 2) / size; // whole rings per tile, so the pattern tiles seamlessly
     for (let y = 0; y < size; y += 1) {
-      const v = Math.sin(y * 0.12 + Math.sin(y * 0.013) * 4) * 0.5 + 0.5;
+      const v = Math.sin(y * f + Math.sin((y / size) * Math.PI * 2 * 3) * 2.5) * 0.5 + 0.5;
       g.fillStyle = `rgba(0,0,0,${0.05 + v * 0.18})`;
       g.fillRect(0, y, size, 1);
     }
@@ -308,10 +317,10 @@ void main() {
   caustics({ uniforms, theme }) {
     const dark = theme === "dark";
     return new THREE.ShaderMaterial({
-      uniforms: uniformsOf({ uTime: 0, uK: 0.5, uDecay: 0, uHalf: 25, uAmp: 1, uBeat: 0.75, uSource: [0, 0], uLift: 1.5, uLamp: [0, 0], uInside: [100, 100], uFocus: 0.5, uDark: dark ? 1 : 0, uMap: null, uHasMap: 0 }, uniforms),
+      uniforms: uniformsOf({ uTime: 0, uK: 0.5, uDecay: 0, uHalf: 25, uAmp: 1, uBeat: 0.75, uSource: [0, 0], uLift: 1.5, uLamp: [0, 0], uInside: [100, 100], uFocus: 0.5, uDark: dark ? 1 : 0 }, uniforms),
       vertexShader: WORLD_VERTEX,
       fragmentShader: `${FIELD}${NOISE}${DITHER}
-uniform float uLift, uFocus, uDark, uHasMap; uniform vec2 uLamp, uInside; uniform sampler2D uMap; varying vec2 vWorld; varying vec2 vUv;
+uniform float uLift, uFocus, uDark; uniform vec2 uLamp, uInside; varying vec2 vWorld;
 void main() {
   vec2 p = uLamp + (vWorld - uLamp) / uLift;
   vec2 edge = uInside - abs(p);
@@ -321,7 +330,6 @@ void main() {
   float light = 1.0 - clamp(uFocus * lap, -0.9, 1.6) * 0.55;
   float pool = 1.0 - smoothstep(60.0, 260.0, length(vWorld - uLamp)) * 0.35;
   vec3 paper = mix(vec3(0.96, 0.95, 0.91), vec3(0.42, 0.42, 0.40), uDark);
-  if (uHasMap > 0.5) paper *= mix(vec3(1.0), texture2D(uMap, vUv * 6.0).rgb / max(paper, vec3(0.2)), 0.5);
   vec3 col = mix(paper * 0.78, paper * light, inside) * pool;
   gl_FragColor = vec4(col + dither(gl_FragCoord.xy), 1.0);
 }`,

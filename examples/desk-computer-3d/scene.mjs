@@ -52,6 +52,9 @@ export const KEYS = [];
 const key = (id, label, x, y, w = KEY.size) => {
   KEYS.push({ id, label });
   add({ id, kind: "box", size: [w, KEY.size, KEY.h], r: 1, at: [x, y, BOARD.h + 0.6], tone: "hi" });
+  // The legend, printed on the cap: a glyph plane that rides with the key.
+  const text = { "\n": "RET", " ": "" }[label] ?? label;
+  if (text) add({ id: `${id}-legend`, kind: "plane", size: [KEY.size - 2, KEY.size - 2], at: [0, 0, KEY.h + 0.04], texture: { kind: "glyph", text }, parent: id });
 };
 for (let i = 0; i < 8; i++) key(`key-f${i + 1}`, `F${i + 1}`, -60 + i * KEY.pitch * 1.2, BOARD.y + 26);
 ROWS.forEach((row, r) => [...row].forEach((ch, c) => key(`key-${r}-${c}`, ch, -58 + r * 3 + c * KEY.pitch, BOARD.y + 15 - r * KEY.pitch)));

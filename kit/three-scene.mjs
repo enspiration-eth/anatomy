@@ -12,7 +12,8 @@ export const KINDS = {
   torus: { need: ["r", "tube"] },
   ticks: { need: ["r", "count"] }, // radial ticks on a dial face: every (major), len [minor, major]
   rail: { need: ["from", "to", "step"] }, // straight ruler ticks along x: every, len [minor, major]
-  disc: { need: ["r"] }, // a flat disc in the part's xy plane, uv 0..1 across it (dial faces)
+  disc: { need: ["r"] },
+  extrude: { need: ["outline", "depth"] }, // outline [[a, b], ...] in plane "xy" (default, extruded up z) or "xz" (extruded along +y) // a flat disc in the part's xy plane, uv 0..1 across it (dial faces)
   instances: { need: ["shape", "items"] }, // one geometry drawn many times: shape box|cylinder|sphere, items [[x, y, z, rz?], ...]
   plane: { need: ["size"] }, // size [w, h] in the part's xy plane; optional screen: [px w, px h] for a canvas texture
   group: { need: [] },
@@ -21,7 +22,7 @@ export const KINDS = {
 /** Procedural textures (kit/three-looks.js TEXTURES) and the options each accepts. */
 export const TEXTURE_KINDS = {
   brushed: ["color", "seed"], knurl: ["pitch"], dial: ["count", "every", "from", "step", "ring", "font", "reverse"],
-  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], pcb: ["seed"], paper: ["seed"], wood: ["seed", "color"],
+  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], pcb: ["seed"], paper: ["seed"], wood: ["seed", "color", "rings"], glyph: ["text", "ink", "font"],
 };
 const TEXTURE_COMMON = ["kind", "repeat", "project", "tile", "size"];
 /** The shader library (kit/three-looks.js SHADERS), whether each is an effect (not a solid) and the uniforms it takes. */
@@ -51,10 +52,13 @@ function lookProblems(part, bad, name) {
       if (t.project !== undefined && !["box", "top"].includes(t.project)) bad(`${name}: texture.project must be "box" or "top"`);
       if (t.project !== undefined && !(isNum(t.tile ?? 20) && (t.tile ?? 20) > 0)) bad(`${name}: texture.tile must be positive (world units per repeat)`);
       if (t.project && t.repeat) bad(`${name}: use texture.project with tile, or repeat, not both`);
-      if (["dial", "ruler", "label"].includes(t.kind) && (t.project || t.repeat)) bad(`${name}: a ${t.kind} texture is a picture, not a pattern: it must not repeat or be projected`);
+      if (["dial", "ruler", "label", "glyph"].includes(t.kind) && (t.project || t.repeat)) bad(`${name}: a ${t.kind} texture is a picture, not a pattern: it must not repeat or be projected`);
       if (t.kind === "dial" && !["disc", "plane"].includes(part.kind)) bad(`${name}: a dial texture belongs on a disc or plane (their uv spans the face)`);
       if (t.kind === "dial" && isNum(t.count) && isNum(t.every) && t.count % t.every !== 0) bad(`${name}: dial count must be a multiple of every`);
       if (t.kind === "label" && t.lines !== undefined && !(Array.isArray(t.lines) && t.lines.every((l) => typeof l === "string"))) bad(`${name}: label lines must be strings`);
+      if (t.kind === "glyph" && !(typeof t.text === "string" && t.text.length >= 1 && t.text.length <= 4)) bad(`${name}: a glyph is 1 to 4 characters of text`);
+      if (t.kind === "glyph" && part.kind !== "plane") bad(`${name}: a glyph goes on a plane laid on the face it labels`);
+      if (t.kind === "glyph" && t.ink !== undefined && !isHex(t.ink)) bad(`${name}: glyph ink must be #rrggbb`);
       if (t.kind === "brushed" || t.kind === "wood") if (t.color !== undefined && !isHex(t.color)) bad(`${name}: texture.color must be #rrggbb`);
       if (t.size !== undefined && !(isNum(t.size) && t.size >= 64 && t.size <= 2048)) bad(`${name}: texture.size must be 64-2048 px`);
     }
@@ -109,6 +113,12 @@ function lookProblems(part, bad, name) {
     if (!(Array.isArray(part.items) && part.items.length >= 2 && part.items.every((p) => isVec(p, 3) || isVec(p, 4)))) bad(`${name}: items must be at least two [x, y, z] or [x, y, z, rz] (one copy is a part, not instances)`);
     if (part.itemColors !== undefined && !(Array.isArray(part.itemColors) && part.itemColors.every(isHex))) bad(`${name}: itemColors must be #rrggbb strings`);
   }
+  if (part.kind === "extrude") {
+    if (!(Array.isArray(part.outline) && part.outline.length >= 3 && part.outline.every((p) => isVec(p, 2)))) bad(`${name}: outline must be at least three [a, b] points`);
+    if (!(isNum(part.depth) && part.depth > 0)) bad(`${name}: depth must be positive`);
+    if (part.plane !== undefined && !["xy", "xz"].includes(part.plane)) bad(`${name}: plane must be "xy" or "xz"`);
+  }
+  if (part.cut !== undefined && part.cut !== true) bad(`${name}: cut is true or absent`);
   if (part.open !== undefined && part.kind !== "cylinder") bad(`${name}: open applies to cylinders`);
 }
 
@@ -166,6 +176,10 @@ export function validateScene(spec) {
       seen.add(at.id);
     }
   }
+  if (spec.section !== undefined && !(spec.section && ["x", "y", "z"].includes(spec.section.axis) && isNum(spec.section.at))) bad('section must be { axis: "x" | "y" | "z", at }');
+  const cuts = spec.parts.filter((p) => p.cut);
+  if (cuts.length && !spec.section) bad(`parts are cut (${cuts.slice(0, 3).map((p) => p.id).join(", ")}) but the scene has no section`);
+  for (const p of cuts) if (p.shader || ["plane", "disc", "ticks", "rail", "group", "instances"].includes(p.kind)) bad(`part "${p.id}": only solid, non-shader parts can be cut`);
   if (spec.env !== undefined && !(spec.env === true || (spec.env && typeof spec.env === "object" && (spec.env.intensity === undefined || (isNum(spec.env.intensity) && spec.env.intensity >= 0 && spec.env.intensity <= 3))))) bad("env must be true or { intensity: 0-3 }");
   const reflective = spec.parts.filter((p) => (p.material?.metal ?? p.metal ?? 0) >= 0.7 || p.material?.transmission);
   if (reflective.length && !spec.env) bad(`metal (>= 0.7) and transmissive parts reflect their surroundings: set env (found ${reflective.map((p) => p.id).slice(0, 3).join(", ")})`);

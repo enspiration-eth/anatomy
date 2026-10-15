@@ -11,6 +11,23 @@ const PALETTE = {
 const isEffect = (part) => part.shader && (part.shader.name === "plume" || part.shader.name === "glow");
 const rad = (deg) => (deg * Math.PI) / 180;
 
+/** Clones a material, clips it at `plane` and draws its back faces (the inside, seen through the cut) hatched. */
+function cutMaterial(source, plane) {
+  const m = source.clone();
+  m.clippingPlanes = [plane];
+  m.side = THREE.DoubleSide;
+  m.clipShadows = true;
+  const base = (m.color ?? new THREE.Color(0x888888)).clone();
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uCutA = { value: base.clone().multiplyScalar(0.85) };
+    shader.uniforms.uCutB = { value: base.clone().multiplyScalar(0.55) };
+    shader.fragmentShader = "uniform vec3 uCutA; uniform vec3 uCutB;\n" + shader.fragmentShader.replace("#include <dithering_fragment>",
+      "#include <dithering_fragment>\n  if (!gl_FrontFacing) { float h = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 7.0)); gl_FragColor = vec4(mix(uCutA, uCutB, h), 1.0); }");
+  };
+  m.customProgramCacheKey = () => "cut";
+  return m;
+}
+
 function roundedBox(size, r) {
   const [w, d, h] = size;
   if (!r) return new THREE.BoxGeometry(w, d, h).translate(0, 0, h / 2);
@@ -64,6 +81,12 @@ function geometryOf(part) {
     case "tube": return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(part.points.map((p) => new THREE.Vector3(...p))), part.points.length * 16, part.r, 16, false);
     case "sphere": return new THREE.SphereGeometry(part.r, seg, Math.max(8, seg / 2));
     case "torus": return new THREE.TorusGeometry(part.r, part.tube, 16, seg);
+    case "extrude": {
+      // An outline in the part's xy plane (plane "xy", extruded up z) or xz plane (plane "xz", extruded along +y).
+      const shape = new THREE.Shape(part.outline.map(([a, b]) => new THREE.Vector2(a, b)));
+      const g = new THREE.ExtrudeGeometry(shape, { depth: part.depth, bevelEnabled: false, curveSegments: 24 });
+      return part.plane === "xz" ? g.rotateX(Math.PI / 2).translate(0, part.depth, 0) : g;
+    }
     case "disc": return new THREE.CircleGeometry(part.r, seg);
     case "plane": return new THREE.PlaneGeometry(part.size[0], part.size[1]);
     default: return null;
@@ -86,6 +109,9 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // A section: parts with cut: true are clipped at the plane, and their inside faces draw as a hatched cap.
+  const section = spec.section ? new THREE.Plane(new THREE.Vector3(...{ x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }[spec.section.axis]), -spec.section.at) : null;
+  if (section) renderer.localClippingEnabled = true;
   renderer.domElement.setAttribute("aria-hidden", "true");
   renderer.domElement.style.cssText = "display:block;width:100%;height:auto;";
   stage.appendChild(renderer.domElement);
@@ -116,7 +142,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     const look = part.texture ? TEXTURES[part.texture.kind]({ ...part.texture, theme }) : {};
     const base = look.plain || part.colors || m.transmission ? (part.color ?? "#ffffff") : part.color ?? (part.lit ? hex(colors.lit) : hex(colors[part.tone ?? "mid"]));
     const options = { side: THREE.DoubleSide, color: base, roughness: m.rough ?? part.rough ?? (part.glass ? 0.08 : 0.55), metalness: m.metal ?? part.metal ?? (part.glass ? 0 : 0.15) };
-    for (const key of ["map", "roughnessMap", "bumpMap", "bumpScale"]) if (look[key] !== undefined) options[key] = look[key];
+    for (const key of ["map", "roughnessMap", "bumpMap", "bumpScale", "alphaTest"]) if (look[key] !== undefined) options[key] = look[key];
     if (part.texture?.repeat) for (const key of ["map", "roughnessMap", "bumpMap"]) options[key]?.repeat.set(...part.texture.repeat);
     if (part.emissive) Object.assign(options, { emissive: part.emissive, emissiveIntensity: part.glow ?? 1 });
     if (part.colors) options.vertexColors = true;
@@ -155,11 +181,12 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
       node = new THREE.Mesh(geometry, custom(part) ?? material(part.tone ?? "mid", part.lit));
       if (part.kind === "plane") part.edges = part.edges ?? false;
       node.castShadow = part.kind !== "plane" && !part.glass;
+      if (part.cut && section) node.material = cutMaterial(node.material, section);
       node.receiveShadow = true;
       if (part.colors) bakeColors(node, part.colors);
       if (part.shader) node.castShadow = false;
       if (isEffect(part)) { node.userData.effect = true; node.renderOrder = 10; }
-      if (part.edges !== false) node.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, part.edgeAngle ?? 28), edgeMaterial));
+      if (part.edges !== false && !part.cut) node.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, part.edgeAngle ?? 28), edgeMaterial));
     }
     node.name = part.id;
     if (part.at) node.position.set(...part.at);

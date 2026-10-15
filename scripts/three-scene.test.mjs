@@ -181,3 +181,26 @@ test("validates instances and counts them once", () => {
   assert.match(problemsOf([{ ...vents, shape: "cone" }]), /shape must be box, cylinder or sphere/);
   assert.match(problemsOf([{ ...vents, itemColors: ["red"] }]), /itemColors/);
 });
+
+test("the Neuralink figure is a valid hero whose threads miss the vessels and stay in the opening", async () => {
+  const N = await import("../examples/neuralink-3d/scene.mjs");
+  assert.deepEqual(validateScene(N.scene), []);
+  assert.ok(solidCount(N.scene) >= 80);
+  assert.equal(N.FACTS.threads * N.FACTS.perThread, N.FACTS.electrodes);
+  for (const x of N.SITES) {
+    assert.ok(Math.abs(x) < N.CHIP.r, `site ${x} inside the craniectomy`);
+    for (const [vx, r] of N.VESSELS) assert.ok(Math.abs(x - vx) >= r + 6, `site ${x} clear of the vessel at ${vx}`);
+  }
+  assert.equal(N.THREADS.length, 16);
+  assert.ok(N.SOURCES.every(([, , url]) => url.startsWith("https://")));
+});
+
+test("validates extrusions and sections", () => {
+  assert.equal(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0], [0, 4]], depth: 2, cut: true }], { section: { axis: "y", at: 0 } }), "");
+  assert.match(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0]], depth: 2 }]), /at least three/);
+  assert.match(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0], [0, 4]], depth: 2, plane: "yz" }]), /plane must be/);
+  assert.match(problemsOf([{ id: "c", kind: "sphere", r: 2, cut: true }]), /no section/);
+  assert.match(problemsOf([{ id: "c", kind: "plane", size: [2, 2], cut: true }], { section: { axis: "y", at: 0 } }), /only solid/);
+  assert.match(problemsOf([], { section: { axis: "w", at: 0 } }), /section must be/);
+  assert.match(problemsOf([{ id: "g", kind: "plane", size: [2, 2], texture: { kind: "glyph", text: "RETURN" } }]), /1 to 4 characters/);
+});

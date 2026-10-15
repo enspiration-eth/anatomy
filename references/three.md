@@ -51,12 +51,15 @@ World units are about 1 px of the real thing; x and y on the floor, z up. A part
 | `torus` | `r`, `tube` |
 | `ticks` | `r`, `count`, `every`, `len: [minor, major]`, dial graduations in the part's xy plane |
 | `rail` | `from`, `to`, `step`, `every`, `len`, ruler ticks along x |
+| `extrude` | `outline: [[a, b], …]`, `depth`, `plane` `"xy"` (default: a plan outline extruded up z) or `"xz"` (a section outline extruded back along +y): layered tissue, notched slabs, folded surfaces |
 | `disc` | `r`: a flat disc whose uv spans the face (dial faces) |
 | `instances` | `shape`, its size fields, `items: [[x, y, z, rz?], …]`: one geometry drawn many times, counted once |
 | `plane` | `size: [w, h]`; with `screen: [px, px]` it carries a canvas texture, at `fig.screens.get(id)` (`ctx`, `canvas`, `update()`) |
 | `group` | none: an assembly that moves; give its parts `parent` |
 
 Any part may also take `color` / `emissive` (`#rrggbb`, with `glow`), `metal`, `rough`, `opacity`, `glass: true`, and `scale`. A scene may add `lights: [{ at, intensity, distance }]` (point lights, for interiors). Box corners round in the plane of the box's two largest sides.
+
+A scene may declare a **section**, `section: { axis: "y", at: 0 }`: parts with `cut: true` are clipped at that plane and their inside faces draw as a hatched cap, so a cylinder cut in half reads as a solid sectioned on the drawing board. Build what lies wholly behind the plane as ordinary parts whose front face is the section (extrude layers from `y = 0` back), and cut only what crosses it (an implant, a bone flap, vessels). Edge lines are dropped on cut parts (they would outline the clipped half). Draw things that belong *on* the section face (threads, a needle) just in front of it, at `y = -2`.
 
 Beyond tone: `texture`, `shader`, `colors`, `material`, the scene's `env`, and `open` on cylinders. They are in `references/three-looks.md`, with when to use each and when not to. The handle adds `fig.shaders` (by id), `fig.paint(id, fn, ramp)`, `fig.rampColor(ramp, t)` and `fig.time(t)`.
 

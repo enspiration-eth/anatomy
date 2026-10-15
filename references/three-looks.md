@@ -39,6 +39,7 @@ add({ id: "dial-face", kind: "disc", r: 36, texture: { kind: "dial", count: 50, 
 | `dial` | `count`, `every`, `from`, `step`, `ring`, `font`, `reverse` | a printed face: `count` graduations, a major every `every`, numerals `from` by `step` |
 | `ruler` | `from`, `to`, `step`, `every`, `label` | a printed scale along u |
 | `label` | `title`, `lines`, `aspect` | a rating plate: title, lines, border |
+| `glyph` | `text` (1–4 characters), `ink`, `font` | a key legend or engraving on a transparent ground, alpha-tested; on a plane laid on the face it labels, parented to the part so it moves with it |
 | `pcb` | `seed` | FR-4 green, copper traces on a router grid, pads, silkscreen; bump for the copper |
 | `paper` | `seed` | fibre noise on a paper tone |
 | `wood` | `seed`, `color` | growth rings along u |
@@ -62,6 +63,8 @@ projects straight down. `size` is the canvas size in px (64 to 2048).
   steel by default. Pass `color` only when the material is a fact (copper, a green board), never to restyle.
 - **A texture with its own colour sets the material to white** so the map reads true. Do not also tint it
   with `color` unless you mean a tinted finish.
+
+- **Grain scales with the canvas.** `brushed` and `wood` draw at 1024 px with one-pixel streaks and a whole number of rings per tile (`rings`), so they tile without seams; choose `tile` so the grain is finer than the smallest feature on the part.
 
 **Failure modes.** Streaks the wrong way on a long part (rotate the part or the projection, the grain
 follows the machining). A wood tile so small the rings alias into moiré at 1.5 dpr. Printed numerals too

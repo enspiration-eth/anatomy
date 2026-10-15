@@ -4,6 +4,11 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 
 ## Unreleased (three.js fork)
 
+### Neuralink N1 figure, sections
+
+- `examples/neuralink-3d`: a hero figure of the N1 implant in a section through scalp, skull (tables and diploë), dura, CSF, cortex and white matter, with vessels; seven steps from craniectomy and robotic thread insertion to recording (spikes, on-chip detection, Bluetooth, a decoded cursor) and inductive charging. Facts are cited in the caption and a notes list; simplifications are listed.
+- Sections: `section` on the scene and `cut: true` on parts clip at a plane and hatch the cut faces. New `extrude` kind (plan or section outlines) and `glyph` texture (key legends, used on the desk computer's keys). Finer, seamless brushed and wood grain.
+
 ### Expressive looks
 
 - `kit/three-looks.js`, inlined with the runtime: procedural textures (brushed metal, knurl, dial faces, rulers, label plates, PCB, paper, wood), a shader library (plume, ripple, caustics, CRT, glow) driven by uniforms, vertex-colour ramps baked (`colors`) or painted live (`fig.paint`), physical materials (`material`: transmission, ior, clearcoat, sheen, iridescence) with a procedural PMREM studio (`env`), `instances`, `disc` and open cylinders.

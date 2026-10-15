@@ -25,6 +25,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install three
+        run: npm ci --no-audit --no-fund
+
       - name: Regression tests
         run: |
           test_deps="$(mktemp -d)"
@@ -63,6 +66,18 @@ jobs:
         run: |
           node examples/raptor-engine/build.mjs
           node examples/raptor-engine/build.mjs --light
+
+      - name: Dial indicator (three.js)
+        run: |
+          mkdir -p shots
+          node examples/dial-indicator-3d/build.mjs --check
+          node examples/dial-indicator-3d/build.mjs
+          node examples/dial-indicator-3d/build.mjs --light
+          for page in dial-indicator-3d dial-indicator-3d-light; do
+            node scripts/capture.mjs examples/dial-indicator-3d/$page.html --out shots/$page.png --times 2400 | tee shots/$page.txt
+            grep -q "readout" shots/$page.txt
+            if grep -Eiq "console\.(error|warning)|exception" shots/$page.txt; then exit 1; fi
+          done
 
       - name: Committed pages are unchanged
         run: |

@@ -1,19 +1,24 @@
 ---
 name: anatomy
-description: Build crafted, highly detailed, interactive isometric SVG figures that explain a technical idea as a real physical object (a test rig, a dial gauge, a cabinet of drawers, a plotter, a lock), with many small precise solid parts, four-tone shading, correct painter's order, a framed card with title, hint and live readout, and calm eased motion. Use this whenever someone wants an isometric illustration, an explanatory diagram or figure for docs, a blog post, a landing page or an article, a "Linear-style" or "premium" technical drawing, an interactive explainer, or an SVG that shows how a system, algorithm or component works, even if they never say "isometric". Works framework-free (TypeScript/JS that writes SVG and HTML) and in React/Next.js, and can add realistic WebGL shaders (fire, exhaust, water, caustics, lamp light) that live inside the drawing in the same isometric perspective. Also publishes a finished figure to the Anatomy community gallery when asked.
+description: Build crafted, highly detailed, interactive isometric figures as three.js scenes that explain a technical idea as a real physical object (a test rig, a dial gauge, a cabinet of drawers, a plotter, a lock), with many small precise solid parts, real lighting and shadows, an orthographic isometric camera, a framed card with title, hint and live readout, and calm eased motion. Use this whenever someone wants an isometric illustration, an explanatory 3D figure for docs, a blog post, a landing page or an article, a "Linear-style" or "premium" technical drawing, or an interactive explainer of how a system, algorithm or component works, even if they never say "isometric" or "three.js". The output is a three.js scene (a validated scene description plus a standalone HTML page, or a module for an app's bundler), not SVG. Also publishes a finished figure to the Anatomy community gallery when asked.
 license: MIT
-compatibility: Written for Claude Code; also runs in Antigravity, OpenCode, Codex and MiniMax Code. Needs Node.js 20.10+, and Chrome or Chromium for the checks.
+compatibility: Written for Claude Code; also runs in Antigravity, OpenCode, Codex and MiniMax Code. Needs Node.js 20.10+, `npm install` (three is the only dependency), and Chrome or Chromium for the checks.
 metadata:
   opencode/slash: "true"
 ---
 
-# Anatomy
+# Anatomy (three.js)
 
 This skill makes figures like a small instrument on a bench: a heavy base on feet, rails with tick rulers, a carriage on bushings, knurled knobs, coil springs, a dial gauge whose needle moves, screws as tiny dots. The reader understands the idea because they recognise the machine. Every number the figure shows comes from the same model that moves its parts.
 
-Eight complete examples ship with the skill. Open the closest one before you start. Each framework-free example is built with `node examples/<name>/build.mjs`, which writes a standalone HTML page next to the script; add `--light` for the light theme.
+**Output target: three.js.** Every figure you make is a three.js scene, not an SVG drawing. You describe the parts as plain data (a *scene*, validated by `kit/three-scene.mjs`), and `kit/three-runtime.js` turns it into meshes with real depth, lighting, shadows and edge lines, seen through an orthographic camera at the figure's isometric azimuth and elevation. Live code moves named parts (`fig.parts.get("carriage").position.x = …`) and calls `fig.render()`. Depth order, hidden lines and occlusion come from the depth buffer, so there is no painter's order to tune. Read `references/three.md` before you start; it is the contract for the scene, the runtime and the page.
 
-- `examples/dial-indicator/` is the smallest: a dial gauge on a stand, about 300 lines in all.
+Start from `examples/dial-indicator-3d/`: `scene.mjs` is the scene (64 solids), `build.mjs` validates it and writes a standalone page. `node examples/dial-indicator-3d/build.mjs` writes the dark page, `--light` the light one, `--check` only validates, and `--three=cdn` (or a URL) loads three from a CDN instead of embedding it.
+
+The SVG examples below are kept as the **reference for the look and for the craft** (the parts, the density, the tones, the card, the motion). Study them for what to build; build it in three.js. Only produce SVG when the user explicitly asks for an SVG file.
+
+- `examples/dial-indicator-3d/` is the three.js reference: the dial gauge as a scene, with a carriage group, a plunger group and a needle group moved by the live code.
+- `examples/dial-indicator/` is the smallest SVG original of the same figure, about 300 lines in all.
 - `examples/desk-computer/` is framework-free SVG: a desk computer with a keyboard you can type on. The typed line appears on a CRT screen drawn in the plane of the case front, and the picture collapses to a line and a dot when you switch it off. It has about 85 solids and 850 paths.
 - `examples/arcade-cabinet/` is an upright arcade cabinet with its side panel off, a Hero of about 240 solids and 15 cables. A quarter flies into the slot, rolls down the coin chute at the speed a rolling disc reaches on a 30° slope, trips the coin-switch wire and drops into the cash box; the switch's pulse runs chunk by chunk along its cable to the board, and the CRT warms up, self-tests and runs an attract mode drawn in the plane of the tilted monitor. The stick tilts and closes a microswitch under the panel. It shows how to place a camera so a cutaway's mechanism stays in view, a concave board drawn as a prism along any axis, moving parts rebuilt in the page from the same module the build uses, and live coins and a wire drawn in reserved slots of the settled order. `node build.mjs --audit` proves the geometry.
 - `examples/raptor-engine/` is a rocket engine hanging in a test stand. Its round parts come from `kit/lathe.mjs` and its pipes and harness from `kit/tube.mjs`. It comes apart into 11 assemblies with staggered springs and per-frame depth re-sorting. Every part records its true shape, and `node build.mjs --audit` (`kit/audit.mjs`) proves, at rest, apart and in every replayed frame of the explode, that nothing passes through anything, that every end sits on a real mount, that no bend pinches, folds or lands on another line, that no curved profile's slope wobbles, and that every overlap is drawn in depth order. A WebGL plume, shock, splash and steam render between the back and front SVG. It is the reference for dense pipework, smooth shading and fades.
@@ -63,12 +68,13 @@ Work in this order. Write the concept and the parts list before any geometry. Mo
 2. **Truth first.** Collect the real numbers and behaviour of the thing being explained: sizes, counts, thresholds, curves. The readout, motion and caption must all be true. If you can, write the model as a small pure module, like `rig.ts` in the test-rig example, and drive everything from it.
 3. **Invent the object.** Pick a machine, tool, instrument or piece of furniture whose mechanism maps one-to-one onto the concept. Say in one sentence what moves and what that motion means. Never copy a reference image: take its finish, not its object.
 4. **Parts list.** Write at least 40 parts (40–80 for a Figure, 80–150 for a Hero, more for an Epic), grouped: base (plate, feet, groove, corner screws, label plate, ruler strip), structure (posts, rails, frame bars, end stops), mechanism (carriage, bushings, springs, plunger, needle), controls (knurled knob, thumb screw, crown) and the subject itself, which is the one lit part. Each part sits on another part. `references/craft.md` has a vocabulary of parts with recipes.
-5. **Plan the world.** Use world units of about 1 px of the real thing: x and y on the floor, z up. Lay out plans as rounded rectangles `{x, y, w, d, r}` and circles. Choose the camera: azimuth 45° by default, 35–60° to show the long side, elevation 30° (higher, like the ripple tank's 44°, to look into something open). Then fit with `fitProjection(points, width, height, { pad, azimuth })`.
-6. **Build geometry once.** Precompute every static path in a geometry module with the kit: `slabOf`, `cylinder`, `extrude`, `planOutline`, `topTicks`, `knurl`, `coil`, `radialTicks` and so on. Round parts on any axis (bells, flanges, valves, actuators) come from `kit/lathe.mjs`, and pipes and cables from `kit/tube.mjs`. Moving parts are built once at a rest position and moved with `translateAlong`. Only parts whose shape changes are rebuilt per frame.
-7. **Paint back to front, bottom to top.** Sort repeated parts with `depthOf`. Split anything that wraps another part into a back half and a front half: the springs around a rod, the bars of a frame around a carriage. A moving part is drawn in the slot where it physically sits. See "Painter's order" in `references/craft.md`. Once a figure has pipes, cables and round parts, stop tuning keys by eye: record each item's shape as you put it into `A.recorder(P, { order, spring })`, let `A.settle(R, P)` measure true depth wherever two items overlap and set the keys, and end the build with `A.auditOrExit(R, P)`. Route pipes before you draw them: real ports at both ends, legs along the structure, crossings on straights, collars gapping the pipe (`references/craft.md`, section 8). Record the true shape of what you draw: a stand-in shape that silences the audit is a bug, and the audit fails one. A rod that slides out of a gland is one rod from `G.rodOut`, recorded with `A.slide`.
+5. **Plan the world.** Use world units of about 1 px of the real thing: x and y on the floor, z up. Lay out plans as rectangles and circles. Choose the camera in the scene: `camera: { azimuth, elevation }`, azimuth 45° by default (35–60° to show the long side), elevation 30° (higher, like the ripple tank's 44°, to look into something open). The runtime fits the orthographic camera to the scene's bounds; nudge the margin with `pad`.
+6. **Write the scene once.** Every part is one entry in `scene.parts`: `{ id, kind, at, rot, tone, lit, parent, ... }` with kinds `box` (with corner radius `r`), `cylinder`, `lathe` (a turned profile for bells, flanges, bezels, plunger tips), `tube` (pipes and cables through points), `sphere` (screw heads, bolts), `torus` (rings, bezels), `ticks` (dial graduations), `rail` (ruler ticks) and `group`. Moving assemblies are `group`s with their parts as children; the live code moves only groups. Build the parts list in code (loops for feet, screws, blocks) in a `scene.mjs` module, and check it with `assertScene(scene)`; the validator rejects unknown kinds, bad sizes, broken parents, more than one lit part, and a Figure with fewer than 40 solids (a Hero 80).
+7. **Let the depth buffer order it.** There is no painter's order: meshes occlude by depth. Your job is that parts really touch (flush, tangent or seated) and never interpenetrate; check it with close-up captures from the camera and, for moving parts, at both ends of their travel. Pipes and cables are `tube`s that start and end on real ports.
 8. **Frame it.** Put the figure in a card: `Fig n` at top left, a short title at top right, the interaction hint at bottom left and the live readout at bottom right. Legend keys and a true caption go under the card, and words stay out of the drawing apart from at most one tiny engraved label.
 9. **Make it live.** Use calm time-based motion: exponential follow or real springs. An idle tour loops when nobody touches it. The figure responds to pointer and keyboard, stops when offscreen, and goes still under reduced motion. Write attributes on refs and don't re-render per frame. See `references/motion.md`.
 10. **Verify like a critic.** The owner finds faults by zooming in, so you zoom in first. Read every PNG you make.
+   - **three.js figures:** `node build.mjs --check` must print `scene ok`. Then `node scripts/capture.mjs page.html --out shots/fig.png` (desktop, `--width 390`, `--hover`, `--times`, `--reduced`, and the `-light` page) must report no console errors or exceptions, and the readout must change over `--times`. Zoom with `--zoom` on every joint where parts meet. The SVG-only checks below (`--audit`, `lines.mjs`, `turn-check.mjs`) do not apply to a three.js scene.
    - Capture desktop, phone (390 wide), hover and several moments of motion with `scripts/capture.mjs`; use `scripts/drive.mjs` for sequences, the apart pose and the `--no-webgl` fallback.
    - **Run the audit to zero.** With pipes, cables or round parts, `node build.mjs --audit` must end `audit passed`, every failing line at 0: clearance at rest, apart and in mid-flight, terminals, loose ends, folds, self-overlap, crowding (against slender solids too), stand-in shapes, support, wobble, saddles and depth order. Fix an interlock in the geometry, never with a key bias.
    - **Run the line check to zero.** The audit never sees line markup. `node scripts/lines.mjs page.html --out shots/lines.png` (and on the `-light` page, and in every resting pose with `drive.mjs`'s `["lines"]` action) must print `line ends: 0`: every seam, rule, rib, tick and pointer ends on a stroke, a dot or an outline. Read the ringed PNG.
@@ -82,6 +88,10 @@ The kit is in `kit/`:
 
 | File | Use it for |
 |---|---|
+| `kit/three-scene.mjs` | **The scene contract.** `validateScene(spec)` returns a list of problems, `assertScene(spec)` throws, `solidCount(spec)`, plus the `KINDS`, `TONES` and `SIZES` tables. |
+| `kit/three-runtime.js` | **The browser runtime.** `mountScene(stage, spec, { theme })` builds meshes, edge lines, lights, contact shadows and the isometric orthographic camera, and returns `{ THREE, scene, camera, renderer, parts, render, toWorld }`. |
+| `scripts/inline-three.mjs` | `threeImportMap(mode)` resolves `three` by embedding the installed copy (`"inline"`, works offline and from `file://`), from jsDelivr (`"cdn"`) or any URL; `threeModule({ spec, theme, live })` returns the page's module script. |
+| `kit/iso-kit.mjs` | Still used by three.js pages for the card and page (`plateHtml`, `pageHtml`, `ISO_CSS`). Its SVG geometry and renderer below are the legacy SVG path. |
 | `kit/iso-kit.ts` | The whole core in one file: camera, solids, a parts library, an SVG string renderer, card and page builders, and the CSS (`ISO_CSS`). Copy it into a TypeScript project. |
 | `kit/iso-kit.mjs` | The same core compiled to plain ESM, for Node scripts. Import it directly. |
 | `kit/iso.css` | `ISO_CSS` written out. Import it once and put `class="iso"` (plus `data-theme="light"` for light) on a wrapper or `<body>`. |
@@ -100,6 +110,11 @@ The kit is in `kit/`:
 
 Pick the path that fits the project:
 
+- **Standalone HTML (default).** Write a `scene.mjs` and a `build.mjs` like `examples/dial-indicator-3d/`: assert the scene, wrap an empty `.iso-stage` in `plateHtml`, write the page with `pageHtml`, put `threeImportMap()` in the head and `threeModule({ spec, theme, live })` before `</body>`.
+- **An app with a bundler (Vite, Next.js, …).** Add `three` to the app, copy `kit/three-runtime.js` and `kit/three-scene.mjs`, import `mountScene` in a client component and call it on a `ref`'d element in an effect; the bundler resolves `three`. Keep the scene in its own module so the server can validate it.
+
+The SVG paths, only when the user asks for SVG:
+
 - **Standalone HTML, a static SVG, a blog post or any non-React site.** Write a Node build script like `examples/dial-indicator/build.mjs`. It imports `kit/iso-kit.mjs`, assembles strings with `solidSvg`, `lineSvg`, `dotsSvg`, `wireSvg` and `faceTextSvg`, wraps them with `figureSvg` and `plateHtml`, and writes the page with `pageHtml({ script: kitScript() + live })`, or `kitScript() + glScript() + live` when it has a shader. For a lone `.svg` file use `figureSvg({ standalone: "dark" | "light" })`, which embeds the styles.
 - **React or Next.js.** Copy `kit/` into the project (for example `components/iso/`). Keep geometry in plain `.ts` modules, build the static art in a server component with the `draw.tsx` components, and pass it as element props to one `"use client"` live component that moves things. `references/react.md` explains the split and a trap with large pages.
 
@@ -107,8 +122,8 @@ Pick the path that fits the project:
 
 These are the rules that separate a crafted figure from a diagram. `references/craft.md` gives the full reasoning and recipes.
 
-- **Solids, not wireframes.** Every part is filled in paper colour and painted in order, so things in front hide things behind. No see-through edges and no dashed hidden lines.
-- **Let the kit shade.** `extrude` returns four side tones by facing plus a lighter top. Keep it for anything with height, and use `flat` only for floors and inlays thinner than 1 unit.
+- **Solids, not wireframes.** Every part is a closed mesh with its edge lines; the depth buffer hides what is behind. No see-through edges and no dashed hidden lines.
+- **Let the lights shade.** The runtime's key light and hemisphere shade every face by its facing and cast contact shadows; give parts real height instead of painting tones on them.
 - **Tone hierarchy.** Base and feet are `lo`, structure is `mid` and the subject is `hi`. Exactly one accent is `lit` (white in dark, black in light): the part the reader should watch. Grooves are `faint`, minor ticks `lo`, major ticks `mid` and the zero mark `hi`. Use colour only when colour is the subject, such as red, green and blue channels.
 - **Small precise detail, never noise.** Use bevels of 0.4–1.6, grooves inset 3–5 from an edge, screws as 0.4–0.55 dots with a ring at the corners of plates, knurls on knobs, ruler ticks every 4–5 units with a major every 5th, and a label plate with three rule lines. Each detail belongs to a part.
 - **Lines resolve.** Every line ends on something: a face, another line or a terminal dot. Connectors are `Wire`s whose terminal dots land on objects. There are no leader lines, balloons, dimension arrows or labels floating in the air.
@@ -121,7 +136,7 @@ These are the rules that separate a crafted figure from a diagram. `references/c
 - **Volume.** Give things real thickness, make them stand on other things, and put a soft halo under the base and under anything lifted.
 - **Composition.** Centre the figure and let it fill about 55–65% of the card. Keep a consistent scale across a set of figures, and make sure it still reads at 390 px wide.
 
-## WebGL inside the drawing
+## WebGL inside the drawing (SVG path)
 
 Use a shader only for what lines can't draw: fire and exhaust, water and caustics, real lamp light, glow, steam. The parts stay SVG. The core rules come from the first shader figure, whose colour change between phases looked cut rather than crossfaded:
 
@@ -141,7 +156,9 @@ Use a shader only for what lines can't draw: fire and exhaust, water and caustic
 
 Read `references/webgl.md` before writing any shader.
 
-## 3D: figures that turn (beta)
+## 3D: SVG figures that turn (beta, SVG path)
+
+For a figure that turns, prefer the three.js scene: rotate a `group`. The section below is the SVG kit's own 3D mode.
 
 3D is an option like WebGL. Use it when a part moving in depth is the idea: a dial or turntable that turns, fingers that flex, a piece that breaks off and falls. The rest of the figure stays static kit art.
 
@@ -161,6 +178,8 @@ Read `references/3d.md` first.
 ## References
 
 Read these as you need them:
+
+- `references/three.md`: **read first.** The three.js target: the scene format, every part kind, tones and materials, the runtime, the page, live code, verification and limits.
 
 - `references/craft.md`: the look in depth, including the parts vocabulary with code, tone tables, painter's order patterns, round parts, pipes and harnesses, exploded views, screens on faces, and the anti-patterns that got figures rejected. Read it before designing.
 - `references/kit.md`: the API, with signatures and examples.

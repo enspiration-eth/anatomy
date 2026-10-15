@@ -2,6 +2,10 @@
 
 All notable changes to Anatomy are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); entries from before the first release are dated.
 
+## Unreleased (three.js fork)
+
+- The skill now targets three.js: figures are validated scenes (`kit/three-scene.mjs`) rendered by `kit/three-runtime.js`, with `examples/dial-indicator-3d/` as the reference and `references/three.md` as the contract. three is the only dependency.
+
 ## [Unreleased]
 
 ### Added

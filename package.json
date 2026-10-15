@@ -1,0 +1,12 @@
+{
+  "name": "anatomy-three",
+  "private": true,
+  "type": "module",
+  "description": "Anatomy, forked to build figures as three.js scenes instead of SVG.",
+  "engines": { "node": ">=20.10" },
+  "scripts": {
+    "test": "node --test scripts/three-*.test.mjs",
+    "build": "node examples/dial-indicator-3d/build.mjs && node examples/dial-indicator-3d/build.mjs --light"
+  },
+  "dependencies": { "three": "0.186.1" }
+}

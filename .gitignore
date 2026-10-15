@@ -9,3 +9,6 @@ audit.txt
 /capture.png
 .scratch/
 tmp/
+
+# Built three.js pages embed three (~2.8 MB); rebuild with build.mjs
+examples/*-3d/*.html

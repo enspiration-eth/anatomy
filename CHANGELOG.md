@@ -5,6 +5,7 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 ## Unreleased (three.js fork)
 
 - The skill now targets three.js: figures are validated scenes (`kit/three-scene.mjs`) rendered by `kit/three-runtime.js`, with `examples/dial-indicator-3d/` as the reference and `references/three.md` as the contract. three is the only dependency.
+- Every SVG example now has a three.js port (`examples/*-3d/`): desk computer, arcade cabinet, Raptor engine, ripple tank, test rig, spot plate and turning dial, with `scripts/build-three.mjs`, `kit/three-live.js` and `kit/three-parts.mjs`, canvas screens, materials, point lights and per-part scale. CI builds and screenshots each in both themes and on a phone with reduced motion.
 
 ## [Unreleased]
 

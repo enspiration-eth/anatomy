@@ -17,7 +17,16 @@ Start from `examples/dial-indicator-3d/`: `scene.mjs` is the scene (64 solids), 
 
 The SVG examples below are kept as the **reference for the look and for the craft** (the parts, the density, the tones, the card, the motion). Study them for what to build; build it in three.js. Only produce SVG when the user explicitly asks for an SVG file.
 
-- `examples/dial-indicator-3d/` is the three.js reference: the dial gauge as a scene, with a carriage group, a plunger group and a needle group moved by the live code.
+Every SVG example has a three.js port beside it, `examples/<name>-3d/` (`scene.mjs` + `build.mjs`, built with `scripts/build-three.mjs`). Open the closest port first:
+
+- `dial-indicator-3d/`: the smallest; a carriage, plunger and needle moved by the live code.
+- `desk-computer-3d/` (Hero, 99 solids): a canvas-texture CRT (`plane` with `screen`) that collapses to a line and a dot, 58 keys that go down as you type, a coiled cord (`coilAlong`).
+- `arcade-cabinet-3d/` (Hero): a coin that rolls a 30° chute and falls past a switch wire, a marquee and a vertical CRT on canvas textures, a stick that closes microswitches, interior point lights (`lights`).
+- `raptor-engine-3d/` (Hero): eleven assemblies that come apart on staggered springs, and a plume `ShaderMaterial` with Mach diamonds on envelopes (additive in dark, ink on paper in light).
+- `ripple-tank-3d/`: water and caustics as two shaders driven by the same dispersion and optics model as the SVG figure (`ripple-tank/model.mjs`, inlined with `extra`).
+- `test-rig-3d/`: springs rebuilt per frame on guide rods, a glass button that swells and leans by a shear matrix, a gauge riding the carriage.
+- `spot-plate-3d/`: six pairs of drops rebuilt as one distance-field heightfield per pair; a fan whose blades stop at their gaps.
+- `turning-dial-3d/` (Hero): a dial you drag, a hand with three-hinge fingers, and a pod that breaks off as a free body.
 - `examples/dial-indicator/` is the smallest SVG original of the same figure, about 300 lines in all.
 - `examples/desk-computer/` is framework-free SVG: a desk computer with a keyboard you can type on. The typed line appears on a CRT screen drawn in the plane of the case front, and the picture collapses to a line and a dot when you switch it off. It has about 85 solids and 850 paths.
 - `examples/arcade-cabinet/` is an upright arcade cabinet with its side panel off, a Hero of about 240 solids and 15 cables. A quarter flies into the slot, rolls down the coin chute at the speed a rolling disc reaches on a 30° slope, trips the coin-switch wire and drops into the cash box; the switch's pulse runs chunk by chunk along its cable to the board, and the CRT warms up, self-tests and runs an attract mode drawn in the plane of the tilted monitor. The stick tilts and closes a microswitch under the panel. It shows how to place a camera so a cutaway's mechanism stays in view, a concave board drawn as a prism along any axis, moving parts rebuilt in the page from the same module the build uses, and live coins and a wire drawn in reserved slots of the settled order. `node build.mjs --audit` proves the geometry.

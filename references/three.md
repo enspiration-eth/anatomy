@@ -10,7 +10,9 @@ Every Anatomy figure is a three.js scene. This is the contract.
 | `kit/three-scene.mjs` | Node and browser | `validateScene(scene)` → problems, `assertScene(scene)` throws, `solidCount(scene)`. |
 | `kit/three-runtime.js` | Browser (imports `three`) | `mountScene(stage, scene, { theme })` → `{ THREE, scene, camera, renderer, parts, render, toWorld }`, or `null` without WebGL. |
 | `scripts/inline-three.mjs` | Node | `threeImportMap("inline" \| "cdn" \| url)` and `threeModule({ spec, theme, live })` for the page. |
-| `examples/<name>/build.mjs` | Node | Asserts the scene, builds the card with `plateHtml`, writes the page. `--light`, `--check`, `--three=`. |
+| `examples/<name>/build.mjs` | Node | Calls `writeThreeFigure` (`scripts/build-three.mjs`): asserts the scene, builds the card, writes the page. `--light`, `--check`, `--three=`. |
+| `kit/three-live.js` | Browser | Inlined before your live code: `loop(stage, step)`, `follow`, `spring`, `idleTour`, `readoutTo`, `still`, `clamp`, `ease`. |
+| `kit/three-parts.mjs` | Node and browser | `collector()`, `coilPoints`, `coilAlong`, `cornersOf`, `screw`. |
 
 `three` is the only dependency (`npm install`). The built pages embed it by default (about 2.8 MB, opens offline and from `file://`); they are git-ignored and rebuilt by CI.
 
@@ -48,11 +50,14 @@ World units are about 1 px of the real thing; x and y on the floor, z up. A part
 | `torus` | `r`, `tube` |
 | `ticks` | `r`, `count`, `every`, `len: [minor, major]`, dial graduations in the part's xy plane |
 | `rail` | `from`, `to`, `step`, `every`, `len`, ruler ticks along x |
+| `plane` | `size: [w, h]`; with `screen: [px, px]` it carries a canvas texture, at `fig.screens.get(id)` (`ctx`, `canvas`, `update()`) |
 | `group` | none: an assembly that moves; give its parts `parent` |
+
+Any part may also take `color` / `emissive` (`#rrggbb`, with `glow`), `metal`, `rough`, `opacity`, `glass: true`, and `scale`. A scene may add `lights: [{ at, intensity, distance }]` (point lights, for interiors). Box corners round in the plane of the box's two largest sides.
 
 ## 3. Live code
 
-`threeModule` runs your `live` string with `fig`, `spec` and `stage` in scope, only when WebGL started. Move groups, never rebuild geometry per frame, and render on demand:
+`threeModule` runs your `live` string with `fig`, `spec`, `stage` and the helpers of `kit/three-live.js` in scope (and `window.__fig` for checks), only when WebGL started. Move groups, never rebuild geometry per frame, and render on demand:
 
 ```js
 const carriage = fig.parts.get("carriage");

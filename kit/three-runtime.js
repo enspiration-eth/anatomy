@@ -9,18 +9,27 @@ const PALETTE = {
 
 const rad = (deg) => (deg * Math.PI) / 180;
 
-function roundedBox([w, d, h], r) {
+function roundedBox(size, r) {
+  const [w, d, h] = size;
   if (!r) return new THREE.BoxGeometry(w, d, h).translate(0, 0, h / 2);
+  // Round the corners in the plane of the two largest sides; extrude along the thinnest.
+  const thin = size.indexOf(Math.min(...size));
+  const [a, b, t] = thin === 2 ? [w, d, h] : thin === 1 ? [w, h, d] : [d, h, w];
+  const bevel = Math.min(r * 0.5, t * 0.2, 1.2);
+  const grow = bevel * 0.8;
+  const sa = a - grow * 2, sb = b - grow * 2, rr = Math.max(0.01, r - grow);
   const s = new THREE.Shape();
-  const x = -w / 2, y = -d / 2;
-  s.moveTo(x + r, y);
-  s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
-  s.lineTo(x + w, y + d - r); s.quadraticCurveTo(x + w, y + d, x + w - r, y + d);
-  s.lineTo(x + r, y + d); s.quadraticCurveTo(x, y + d, x, y + d - r);
-  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
-  const bevel = Math.min(r * 0.5, h * 0.2, 1.2);
-  const geometry = new THREE.ExtrudeGeometry(s, { depth: h - bevel * 2, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 2, curveSegments: 6 });
-  return geometry.translate(0, 0, bevel);
+  const x = -sa / 2, y = -sb / 2;
+  s.moveTo(x + rr, y);
+  s.lineTo(x + sa - rr, y); s.quadraticCurveTo(x + sa, y, x + sa, y + rr);
+  s.lineTo(x + sa, y + sb - rr); s.quadraticCurveTo(x + sa, y + sb, x + sa - rr, y + sb);
+  s.lineTo(x + rr, y + sb); s.quadraticCurveTo(x, y + sb, x, y + sb - rr);
+  s.lineTo(x, y + rr); s.quadraticCurveTo(x, y, x + rr, y);
+  const geometry = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.01, t - bevel * 2), bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: grow, bevelSegments: 2, curveSegments: 6 });
+  geometry.translate(0, 0, bevel);
+  if (thin === 2) return geometry;
+  if (thin === 1) return geometry.rotateX(Math.PI / 2).translate(0, t / 2, h / 2);
+  return geometry.rotateX(Math.PI / 2).rotateZ(Math.PI / 2).translate(-t / 2, 0, h / 2);
 }
 
 function tickLines(part) {
@@ -28,7 +37,7 @@ function tickLines(part) {
   const [minor, major] = part.len ?? [1.2, 2.6];
   if (part.kind === "ticks") {
     for (let i = 0; i < part.count; i++) {
-      const a = (i / part.count) * Math.PI * 2;
+      const a = part.sweep ? ((part.start ?? 0) + (i / (part.count - 1)) * part.sweep) * (Math.PI / 180) : (i / part.count) * Math.PI * 2;
       const length = i % (part.every ?? 5) === 0 ? major : minor;
       points.push(Math.sin(a) * part.r, Math.cos(a) * part.r, 0, Math.sin(a) * (part.r - length), Math.cos(a) * (part.r - length), 0);
     }
@@ -53,6 +62,7 @@ function geometryOf(part) {
     case "tube": return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(part.points.map((p) => new THREE.Vector3(...p))), part.points.length * 16, part.r, 16, false);
     case "sphere": return new THREE.SphereGeometry(part.r, seg, Math.max(8, seg / 2));
     case "torus": return new THREE.TorusGeometry(part.r, part.tube, 16, seg);
+    case "plane": return new THREE.PlaneGeometry(part.size[0], part.size[1]);
     default: return null;
   }
 }
@@ -79,13 +89,30 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
 
   const scene = new THREE.Scene();
   const parts = new Map();
+  const screens = new Map();
+  const custom = (part) => {
+    if (part.screen) {
+      const canvas = document.createElement("canvas");
+      [canvas.width, canvas.height] = part.screen;
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      screens.set(part.id, { canvas, ctx: canvas.getContext("2d"), texture, update: () => (texture.needsUpdate = true) });
+      return new THREE.MeshBasicMaterial({ map: texture, toneMapped: false });
+    }
+    if (!part.color && !part.emissive && !part.opacity && part.metal === undefined && !part.glass) return null;
+    const base = part.color ?? (part.lit ? `#${colors.lit.toString(16).padStart(6, "0")}` : `#${colors[part.tone ?? "mid"].toString(16).padStart(6, "0")}`);
+    const options = { side: THREE.DoubleSide, color: base, roughness: part.rough ?? (part.glass ? 0.08 : 0.55), metalness: part.metal ?? (part.glass ? 0 : 0.15) };
+    if (part.emissive) Object.assign(options, { emissive: part.emissive, emissiveIntensity: part.glow ?? 1 });
+    if (part.glass || part.opacity) Object.assign(options, { transparent: true, opacity: part.opacity ?? 0.35, depthWrite: !part.glass });
+    return part.glass ? new THREE.MeshPhysicalMaterial({ ...options, clearcoat: 1, clearcoatRoughness: 0.05 }) : new THREE.MeshStandardMaterial(options);
+  };
   const materials = {};
   const material = (tone, lit) => {
     const key = lit ? "lit" : tone;
     if (!materials[key]) {
       materials[key] = lit
         ? new THREE.MeshStandardMaterial({ color: colors.lit, emissive: colors.lit, emissiveIntensity: theme === "dark" ? 0.55 : 0, roughness: 0.35, metalness: 0.1 })
-        : new THREE.MeshStandardMaterial({ color: colors[tone], roughness: 0.62, metalness: 0.15 });
+        : new THREE.MeshStandardMaterial({ color: colors[tone], roughness: 0.62, metalness: 0.15, side: THREE.DoubleSide });
     }
     return materials[key];
   };
@@ -98,14 +125,16 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     else if (part.kind === "ticks" || part.kind === "rail") node = new THREE.LineSegments(tickLines(part), lineMaterial(part));
     else {
       const geometry = geometryOf(part);
-      node = new THREE.Mesh(geometry, material(part.tone ?? "mid", part.lit));
-      node.castShadow = true;
+      node = new THREE.Mesh(geometry, custom(part) ?? material(part.tone ?? "mid", part.lit));
+      if (part.kind === "plane") part.edges = part.edges ?? false;
+      node.castShadow = part.kind !== "plane" && !part.glass;
       node.receiveShadow = true;
       if (part.edges !== false) node.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, part.edgeAngle ?? 28), edgeMaterial));
     }
     node.name = part.id;
     if (part.at) node.position.set(...part.at);
     if (part.rot) node.rotation.set(...part.rot.map(rad));
+    if (part.scale) node.scale.setScalar(part.scale);
     parts.set(part.id, node);
   }
   for (const part of spec.parts) (part.parent ? parts.get(part.parent) : scene).add(parts.get(part.id));
@@ -114,6 +143,11 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const key = new THREE.DirectionalLight(0xffffff, theme === "dark" ? 1.9 : 1.5);
   scene.add(key, key.target);
 
+  for (const light of spec.lights ?? []) {
+    const point = new THREE.PointLight(light.color ?? 0xffffff, light.intensity ?? 1, light.distance ?? 0, light.decay ?? 0);
+    point.position.set(...light.at);
+    scene.add(point);
+  }
   const box = new THREE.Box3().setFromObject(scene);
   const centre = box.getCenter(new THREE.Vector3());
   const radius = box.getSize(new THREE.Vector3()).length() / 2 || 100;
@@ -159,7 +193,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const ground = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   const raycaster = new THREE.Raycaster();
   const handle = {
-    THREE, scene, camera, renderer, parts,
+    THREE, scene, camera, renderer, parts, screens, colors, theme,
     render: () => renderer.render(scene, camera),
     /** Pointer event to a world point on the plane z = height. */
     toWorld(event, height = 0) {

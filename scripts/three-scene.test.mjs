@@ -71,3 +71,32 @@ test("the example builds a standalone page with no SVG figure", () => {
   assert.doesNotMatch(page, /<svg[^>]*class="iso-svg"/);
   execFileSync(process.execPath, ["examples/dial-indicator-3d/build.mjs"]);
 });
+
+const PORTS = ["dial-indicator", "desk-computer", "arcade-cabinet", "raptor-engine", "ripple-tank", "test-rig", "spot-plate", "turning-dial"];
+
+test("every SVG example has a valid three.js port that meets its size", async () => {
+  for (const name of PORTS) {
+    const { scene: port } = await import(`../examples/${name}-3d/scene.mjs`);
+    assert.deepEqual(validateScene(port), [], name);
+    const least = { figure: 40, hero: 80 }[port.size ?? "figure"];
+    assert.ok(solidCount(port) >= least, `${name}: ${solidCount(port)} solids`);
+    assert.equal(port.parts.filter((p) => p.lit).length, 1, `${name} has one lit part`);
+  }
+});
+
+test("every port's build validates with --check", () => {
+  for (const name of PORTS) {
+    const out = execFileSync(process.execPath, [`examples/${name}-3d/build.mjs`, "--check"], { encoding: "utf8" });
+    assert.match(out, /^scene ok: \d+ solid parts/, name);
+  }
+});
+
+test("validates screens, colours, scale and lights", () => {
+  const ok = [...boxes(40), { id: "s", kind: "plane", size: [10, 8], screen: [64, 48], color: "#112233", opacity: 0.5 }, { id: "g", kind: "group", scale: 2 }];
+  assert.deepEqual(validateScene({ ...base(ok), lights: [{ at: [0, 0, 10] }] }), []);
+  const problems = validateScene({ ...base([...boxes(40), { id: "s", kind: "box", size: [1, 1, 1], screen: [64, 48], color: "red" }, { id: "g", kind: "group", scale: -1 }]), lights: [{}] }).join("\n");
+  assert.match(problems, /screen must be/);
+  assert.match(problems, /#rrggbb/);
+  assert.match(problems, /scale must be/);
+  assert.match(problems, /each light needs/);
+});

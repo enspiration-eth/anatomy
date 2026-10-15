@@ -67,17 +67,29 @@ jobs:
           node examples/raptor-engine/build.mjs
           node examples/raptor-engine/build.mjs --light
 
-      - name: Dial indicator (three.js)
+      - name: three.js ports
         run: |
           mkdir -p shots
-          node examples/dial-indicator-3d/build.mjs --check
-          node examples/dial-indicator-3d/build.mjs
-          node examples/dial-indicator-3d/build.mjs --light
-          for page in dial-indicator-3d dial-indicator-3d-light; do
-            node scripts/capture.mjs examples/dial-indicator-3d/$page.html --out shots/$page.png --times 2400 | tee shots/$page.txt
-            grep -q "readout" shots/$page.txt
-            if grep -Eiq "console\.(error|warning)|exception" shots/$page.txt; then exit 1; fi
+          for name in dial-indicator desk-computer arcade-cabinet raptor-engine ripple-tank test-rig spot-plate turning-dial; do
+            node examples/$name-3d/build.mjs --check
+            node examples/$name-3d/build.mjs
+            node examples/$name-3d/build.mjs --light
+            for page in $name-3d $name-3d-light; do
+              node scripts/capture.mjs examples/$name-3d/$page.html --out shots/$page.png --times 2400 2>&1 | tee shots/$page.txt
+              grep -q "readout" shots/$page.txt
+              if grep -Eiq "console\.(error|warning)|exception" shots/$page.txt; then exit 1; fi
+            done
+            node scripts/capture.mjs examples/$name-3d/$name-3d.html --out shots/$name-3d-phone.png --width 390 --reduced 2>&1 | tee shots/$name-3d-phone.txt
+            if grep -Eiq "console\.(error|warning)|exception|scrolls sideways: yes" shots/$name-3d-phone.txt; then exit 1; fi
           done
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: three-shots
+          path: shots/*.png
+          if-no-files-found: ignore
 
       - name: Committed pages are unchanged
         run: |

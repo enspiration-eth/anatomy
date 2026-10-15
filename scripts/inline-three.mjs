@@ -34,12 +34,18 @@ export const threeRuntime = () => readFileSync(join(KIT, "three-runtime.js"), "u
  * The module script for a figure: the runtime, the scene and the figure's live code.
  * `live` runs with `fig` (the mountScene handle, or null without WebGL), `spec` and `stage` in scope.
  */
-export function threeModule({ spec, theme, live = "", stage = ".iso-stage" }) {
+/** The motion helpers (kit/three-live.js) as module source. */
+export const threeLive = () => readFileSync(join(KIT, "three-live.js"), "utf8").replace(/^export /gm, "");
+
+export function threeModule({ spec, theme, live = "", stage = ".iso-stage", extra = "" }) {
   return `<script type="module">
 ${threeRuntime()}
+${threeLive()}
+${extra}
 const spec = ${JSON.stringify(spec)};
 const stage = document.querySelector(${JSON.stringify(stage)});
 const fig = mountScene(stage, spec, { theme: ${JSON.stringify(theme)} });
+window.__fig = fig;
 if (fig) {
 ${live}
 }

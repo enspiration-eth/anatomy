@@ -12,9 +12,105 @@ export const KINDS = {
   torus: { need: ["r", "tube"] },
   ticks: { need: ["r", "count"] }, // radial ticks on a dial face: every (major), len [minor, major]
   rail: { need: ["from", "to", "step"] }, // straight ruler ticks along x: every, len [minor, major]
+  disc: { need: ["r"] }, // a flat disc in the part's xy plane, uv 0..1 across it (dial faces)
+  instances: { need: ["shape", "items"] }, // one geometry drawn many times: shape box|cylinder|sphere, items [[x, y, z, rz?], ...]
   plane: { need: ["size"] }, // size [w, h] in the part's xy plane; optional screen: [px w, px h] for a canvas texture
   group: { need: [] },
 };
+
+/** Procedural textures (kit/three-looks.js TEXTURES) and the options each accepts. */
+export const TEXTURE_KINDS = {
+  brushed: ["color", "seed"], knurl: ["pitch"], dial: ["count", "every", "from", "step", "ring", "font", "reverse"],
+  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], pcb: ["seed"], paper: ["seed"], wood: ["seed", "color"],
+};
+const TEXTURE_COMMON = ["kind", "repeat", "project", "tile", "size"];
+/** The shader library (kit/three-looks.js SHADERS), whether each is an effect (not a solid) and the uniforms it takes. */
+export const SHADER_NAMES = {
+  plume: { effect: true, uniforms: ["uTime", "uLevel", "uDiamonds", "uSpeed"] },
+  ripple: { effect: false, uniforms: ["uTime", "uK", "uDecay", "uHalf", "uAmp", "uBeat", "uSource"] },
+  caustics: { effect: false, uniforms: ["uTime", "uK", "uDecay", "uHalf", "uAmp", "uBeat", "uSource", "uLift", "uLamp", "uInside", "uFocus"] },
+  crt: { effect: false, screen: true, uniforms: ["uTime", "uPower", "uWarm", "uVertical", "uLines", "uGlow", "uCurve", "uTint"] },
+  glow: { effect: true, uniforms: ["uColor", "uLevel", "uPower"] },
+};
+export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "tone"];
+const MATERIAL_RANGES = { metal: [0, 1], rough: [0, 1], transmission: [0, 1], ior: [1, 2.5], thickness: [0, 500], clearcoat: [0, 1], clearcoatRough: [0, 1], sheen: [0, 1], iridescence: [0, 1], tintDistance: [0.1, 1e6] };
+const isHex = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+const isUniform = (value) => isNum(value) || isHex(value) || (Array.isArray(value) && (value.length === 2 || value.length === 3) && value.every(isNum));
+
+/** True when a part is a visual effect (a plume, a glow) and so not a solid. */
+export const isEffect = (part) => !!(part.shader && SHADER_NAMES[part.shader.name]?.effect);
+const isSolid = (part) => !["group", "ticks", "rail", "plane", "disc"].includes(part.kind) && !isEffect(part);
+
+function lookProblems(part, bad, name) {
+  const t = part.texture;
+  if (t !== undefined) {
+    if (!t || !TEXTURE_KINDS[t.kind]) bad(`${name}: texture.kind must be one of ${Object.keys(TEXTURE_KINDS).join(", ")}`);
+    else {
+      for (const key of Object.keys(t)) if (!TEXTURE_COMMON.includes(key) && !TEXTURE_KINDS[t.kind].includes(key)) bad(`${name}: texture ${t.kind} does not take "${key}"`);
+      if (t.repeat !== undefined && !(isVec(t.repeat, 2) && t.repeat.every((v) => v > 0))) bad(`${name}: texture.repeat must be [u, v] > 0`);
+      if (t.project !== undefined && !["box", "top"].includes(t.project)) bad(`${name}: texture.project must be "box" or "top"`);
+      if (t.project !== undefined && !(isNum(t.tile ?? 20) && (t.tile ?? 20) > 0)) bad(`${name}: texture.tile must be positive (world units per repeat)`);
+      if (t.project && t.repeat) bad(`${name}: use texture.project with tile, or repeat, not both`);
+      if (["dial", "ruler", "label"].includes(t.kind) && (t.project || t.repeat)) bad(`${name}: a ${t.kind} texture is a picture, not a pattern: it must not repeat or be projected`);
+      if (t.kind === "dial" && !["disc", "plane"].includes(part.kind)) bad(`${name}: a dial texture belongs on a disc or plane (their uv spans the face)`);
+      if (t.kind === "dial" && isNum(t.count) && isNum(t.every) && t.count % t.every !== 0) bad(`${name}: dial count must be a multiple of every`);
+      if (t.kind === "label" && t.lines !== undefined && !(Array.isArray(t.lines) && t.lines.every((l) => typeof l === "string"))) bad(`${name}: label lines must be strings`);
+      if (t.kind === "brushed" || t.kind === "wood") if (t.color !== undefined && !isHex(t.color)) bad(`${name}: texture.color must be #rrggbb`);
+      if (t.size !== undefined && !(isNum(t.size) && t.size >= 64 && t.size <= 2048)) bad(`${name}: texture.size must be 64-2048 px`);
+    }
+  }
+  const sh = part.shader;
+  if (sh !== undefined) {
+    const known = sh && SHADER_NAMES[sh.name];
+    if (!known) bad(`${name}: shader.name must be one of ${Object.keys(SHADER_NAMES).join(", ")}`);
+    else {
+      for (const [key, value] of Object.entries(sh.uniforms ?? {})) {
+        if (!known.uniforms.includes(key)) bad(`${name}: shader ${sh.name} has no uniform ${key}`);
+        else if (!isUniform(value)) bad(`${name}: uniform ${key} must be a number, [x, y(, z)] or #rrggbb`);
+      }
+      if (known.screen && !part.screen) bad(`${name}: shader ${sh.name} draws a screen: give the plane screen: [w, h]`);
+      if (part.texture || part.material || part.colors) bad(`${name}: a shader part takes no texture, material or colors (the shader is the look)`);
+      if (sh.name === "plume" && !(part.kind === "cylinder" && part.open)) bad(`${name}: a plume needs an open cylinder (open: true), uv.y along the flow`);
+      if (sh.name === "glow" && part.kind !== "sphere") bad(`${name}: a glow is a sphere round its light`);
+      if ((sh.name === "ripple" || sh.name === "caustics") && part.kind !== "plane") bad(`${name}: a ${sh.name} shader goes on a plane`);
+    }
+  }
+  const c = part.colors;
+  if (c !== undefined) {
+    if (!c || (c.ramp === undefined) === (c.stops === undefined)) bad(`${name}: colors needs exactly one of ramp or stops`);
+    else {
+      if (c.ramp !== undefined && !RAMP_NAMES.includes(c.ramp)) bad(`${name}: colors.ramp must be one of ${RAMP_NAMES.join(", ")}`);
+      if (c.stops !== undefined && !(Array.isArray(c.stops) && c.stops.length >= 2 && c.stops.every((st, i) => Array.isArray(st) && isNum(st[0]) && st[0] >= 0 && st[0] <= 1 && isHex(st[1]) && (i === 0 || st[0] >= c.stops[i - 1][0])))) bad(`${name}: colors.stops must be [t, "#rrggbb"] pairs, t rising from 0 to 1`);
+      if (c.axis !== undefined && !["x", "y", "z", "r"].includes(c.axis)) bad(`${name}: colors.axis must be x, y, z or r`);
+      if (!(isVec(c.range, 2) && c.range[1] > c.range[0])) bad(`${name}: colors.range must be [low, high] with high > low`);
+      if (["ticks", "rail", "group", "instances"].includes(part.kind)) bad(`${name}: ${part.kind} has no vertices to colour`);
+      if (part.kind === "box" && !part.r) bad(`${name}: a sharp box has 24 vertices, too few for a gradient; give it r or use another kind`);
+    }
+  }
+  const m = part.material;
+  if (m !== undefined) {
+    if (!m || typeof m !== "object") bad(`${name}: material must be an object`);
+    else {
+      for (const [key, value] of Object.entries(m)) {
+        if (MATERIAL_RANGES[key]) { const [lo, hi] = MATERIAL_RANGES[key]; if (!(isNum(value) && value >= lo && value <= hi)) bad(`${name}: material.${key} must be in [${lo}, ${hi}]`); }
+        else if (key === "tint" || key === "sheenColor") { if (!isHex(value)) bad(`${name}: material.${key} must be #rrggbb`); }
+        else bad(`${name}: material has no field ${key}`);
+      }
+      if (m.metal !== undefined && part.metal !== undefined) bad(`${name}: set metal once (material.metal or metal)`);
+      if (m.transmission && part.opacity !== undefined) bad(`${name}: a transmissive part is not also faded (drop opacity)`);
+      if (m.transmission && m.metal > 0.1) bad(`${name}: metal does not transmit light (transmission with metal > 0.1)`);
+    }
+  }
+  if (part.kind === "instances") {
+    if (!["box", "cylinder", "sphere"].includes(part.shape)) bad(`${name}: instances shape must be box, cylinder or sphere`);
+    if (part.shape === "box" && !(isVec(part.size, 3) && part.size.every((v) => v > 0))) bad(`${name}: box instances need size [w, d, h]`);
+    if (part.shape === "cylinder" && !(isNum(part.r) && isNum(part.h))) bad(`${name}: cylinder instances need r and h`);
+    if (part.shape === "sphere" && !isNum(part.r)) bad(`${name}: sphere instances need r`);
+    if (!(Array.isArray(part.items) && part.items.length >= 2 && part.items.every((p) => isVec(p, 3) || isVec(p, 4)))) bad(`${name}: items must be at least two [x, y, z] or [x, y, z, rz] (one copy is a part, not instances)`);
+    if (part.itemColors !== undefined && !(Array.isArray(part.itemColors) && part.itemColors.every(isHex))) bad(`${name}: itemColors must be #rrggbb strings`);
+  }
+  if (part.open !== undefined && part.kind !== "cylinder") bad(`${name}: open applies to cylinders`);
+}
 
 export const TONES = ["lo", "mid", "hi", "faint"];
 export const SIZES = { figure: [40, 80], hero: [80, 150], epic: [150, Infinity] };
@@ -58,7 +154,8 @@ export function validateScene(spec) {
     if (part.kind === "lathe" && !(Array.isArray(part.profile) && part.profile.length >= 2 && part.profile.every((p) => isVec(p, 2) && p[0] >= 0))) bad(`${name}: profile must be at least two [radius >= 0, z] points`);
     if (part.kind === "tube" && !(Array.isArray(part.points) && part.points.length >= 2 && part.points.every((p) => isVec(p, 3)))) bad(`${name}: points must be at least two [x, y, z] points`);
     if (part.kind === "box" && part.r !== undefined && isVec(part.size, 3) && part.r * 2 >= [...part.size].sort((a, b) => a - b)[1]) bad(`${name}: corner radius too large for its size`);
-    if (!["group", "ticks", "rail", "plane"].includes(part.kind)) solids++;
+    lookProblems(part, bad, name);
+    if (isSolid(part)) solids++;
   });
   for (const part of spec.parts) {
     if (!part?.parent) continue;
@@ -69,6 +166,9 @@ export function validateScene(spec) {
       seen.add(at.id);
     }
   }
+  if (spec.env !== undefined && !(spec.env === true || (spec.env && typeof spec.env === "object" && (spec.env.intensity === undefined || (isNum(spec.env.intensity) && spec.env.intensity >= 0 && spec.env.intensity <= 3))))) bad("env must be true or { intensity: 0-3 }");
+  const reflective = spec.parts.filter((p) => (p.material?.metal ?? p.metal ?? 0) >= 0.7 || p.material?.transmission);
+  if (reflective.length && !spec.env) bad(`metal (>= 0.7) and transmissive parts reflect their surroundings: set env (found ${reflective.map((p) => p.id).slice(0, 3).join(", ")})`);
   for (const light of spec.lights ?? []) if (!isVec(light?.at, 3)) bad("each light needs at: [x, y, z]");
   if (lit > 1) bad(`exactly one part may be lit, found ${lit}`);
   const size = spec.size ?? "figure";
@@ -84,4 +184,4 @@ export function assertScene(spec) {
 }
 
 /** Counts solid parts, for the readout of a build script. */
-export const solidCount = (spec) => spec.parts.filter((p) => !["group", "ticks", "rail", "plane"].includes(p.kind)).length;
+export const solidCount = (spec) => spec.parts.filter(isSolid).length;

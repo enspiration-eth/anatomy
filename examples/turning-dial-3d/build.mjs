@@ -52,6 +52,7 @@ function draw() {
   const glow = 1 - Math.min(1, l * 1.5);
   led.material.color.copy(ledColor).lerp(new THREE.Color(0x3cff8a), glow);
   led.material.emissive.set(0x1aff6a).multiplyScalar(glow * 0.9);
+  fig.shaders.get("led-glow").uniforms.uLevel.value = glow;
   const shown = ((angle % 360) + 360) % 360;
   readoutTo(stage, "dial " + numberOf(angle) + " · " + shown.toFixed(1) + "°", numberOf(angle));
   fig.render();

@@ -28,7 +28,11 @@ export function threeImportMap(mode = "inline") {
 }
 
 /** The browser runtime (kit/three-runtime.js) as module source, with its import kept. */
-export const threeRuntime = () => readFileSync(join(KIT, "three-runtime.js"), "utf8").replace(/^export /gm, "");
+export const threeRuntime = () =>
+  [readFileSync(join(KIT, "three-looks.js"), "utf8").replace(/^import \* as THREE from "three";\n/m, ""), readFileSync(join(KIT, "three-runtime.js"), "utf8").replace(/^import \{[^}]*\} from "\.\/three-looks\.js";\n/m, "")]
+    .map((source) => source.replace(/^export /gm, ""))
+    .reverse()
+    .join("\n");
 
 /**
  * The module script for a figure: the runtime, the scene and the figure's live code.

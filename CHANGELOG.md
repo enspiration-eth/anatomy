@@ -4,6 +4,14 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 
 ## Unreleased (three.js fork)
 
+### Expressive looks
+
+- `kit/three-looks.js`, inlined with the runtime: procedural textures (brushed metal, knurl, dial faces, rulers, label plates, PCB, paper, wood), a shader library (plume, ripple, caustics, CRT, glow) driven by uniforms, vertex-colour ramps baked (`colors`) or painted live (`fig.paint`), physical materials (`material`: transmission, ior, clearcoat, sheen, iridescence) with a procedural PMREM studio (`env`), `instances`, `disc` and open cylinders.
+- The validator checks every new field: texture kinds and options, shader names, placement and uniforms, ramps and stops, material ranges, `env` for metal and glass, instances (counted once). Plumes and glows are effects and do not count as solids.
+- `references/three-looks.md`: when to use each look, rules, failure modes and checks.
+- Examples: ripple tank water and caustics as library shaders with a transmissive glass bed and wood base; Raptor plume as a library shader plus a wall heat-flux map (H); CRT shaders with raster collapse and warm-up on the desk computer and the arcade monitor, LED glow, instanced vents, a PCB and wood cabinet; printed dial faces on the dial indicator and turning dial with brushed and PBR metals under the studio environment; strain view on the test rig (S); transmissive, iridescent drops with a thickness ramp on the spot plate.
+
+
 - The skill now targets three.js: figures are validated scenes (`kit/three-scene.mjs`) rendered by `kit/three-runtime.js`, with `examples/dial-indicator-3d/` as the reference and `references/three.md` as the contract. three is the only dependency.
 - Every SVG example now has a three.js port (`examples/*-3d/`): desk computer, arcade cabinet, Raptor engine, ripple tank, test rig, spot plate and turning dial, with `scripts/build-three.mjs`, `kit/three-live.js` and `kit/three-parts.mjs`, canvas screens, materials, point lights and per-part scale. CI builds and screenshots each in both themes and on a phone with reduced motion.
 

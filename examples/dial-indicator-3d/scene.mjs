@@ -22,7 +22,7 @@ const add = (part) => (parts.push(part), part);
 const cx = (p) => p.x + p.w / 2, cy = (p) => p.y + p.d / 2;
 
 // Base: plate on four two-step feet, corner screws, a ruler strip.
-add({ id: "plate", kind: "box", size: [PLATE.w, PLATE.d, PLATE_H], r: 8, at: [cx(PLATE), cy(PLATE), -PLATE_H], tone: "mid" });
+add({ id: "plate", kind: "box", size: [PLATE.w, PLATE.d, PLATE_H], r: 8, at: [cx(PLATE), cy(PLATE), -PLATE_H], texture: { kind: "brushed", project: "box", tile: 90 }, metal: 0.7, rough: 0.42 });
 const feet = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
 feet.forEach(([sx, sy], i) => {
   const at = [cx(PLATE) + sx * (PLATE.w / 2 - 22), cy(PLATE) + sy * (PLATE.d / 2 - 22)];
@@ -81,9 +81,12 @@ add({ id: "plunger-rod", kind: "cylinder", r: 1.4, h: 50, segments: 16, at: [0, 
 // The dial: stem, body, bezel, face ticks, lug, crown.
 add({ id: "dial-stem", kind: "cylinder", r: 2.9, h: DIAL_Z - 54, at: [...DIAL, 54], tone: "mid" });
 add({ id: "dial-arm-lug", kind: "box", size: [8, 8, CLAMP_Z - DIAL_Z - 2], r: 1.5, at: [DIAL[0] - DIAL_R - 2, 0, DIAL_Z + 2], tone: "mid" });
-add({ id: "dial-body", kind: "lathe", segments: 64, profile: [[0, 0], [DIAL_R - 0.8, 0], [DIAL_R, 0.8], [DIAL_R, DIAL_H - 3.4], [DIAL_R + 0.4, DIAL_H - 3.2], [DIAL_R + 0.4, DIAL_H - 0.4], [DIAL_R, DIAL_H], [0, DIAL_H]], at: [...DIAL, DIAL_Z], tone: "hi" });
+add({ id: "dial-body", kind: "lathe", segments: 64, profile: [[0, 0], [DIAL_R - 0.8, 0], [DIAL_R, 0.8], [DIAL_R, DIAL_H - 3.4], [DIAL_R + 0.4, DIAL_H - 3.2], [DIAL_R + 0.4, DIAL_H - 0.4], [DIAL_R, DIAL_H], [0, DIAL_H]], at: [...DIAL, DIAL_Z], color: "#c9ced4", metal: 0.85, rough: 0.22 });
 add({ id: "dial-bezel", kind: "torus", r: DIAL_R - 2.2, tube: 0.35, segments: 64, at: [...DIAL, DIAL_TOP], tone: "lo", edges: false });
-add({ id: "dial-ticks", kind: "ticks", r: DIAL_R - 3, count: 50, every: 5, len: [1.3, 2.8], at: [...DIAL, DIAL_TOP + 0.05], tone: "lo" });
+// The printed face: fifty graduations, numerals on every fifth, drawn into a texture from these same numbers.
+add({ id: "dial-face", kind: "disc", r: DIAL_R - 2.4, segments: 64, at: [...DIAL, DIAL_TOP + 0.05], texture: { kind: "dial", count: 50, every: 5, from: 0, step: 10, ring: 0.95, font: 0.1 }, rough: 0.6, metal: 0 });
+// The crystal: a faint clear-coated glass, not transmission, which would blur the printed face at this size.
+add({ id: "dial-crystal", kind: "cylinder", r: DIAL_R - 2.2, h: 0.5, segments: 64, at: [...DIAL, DIAL_TOP + 1.1], glass: true, color: "#ffffff", opacity: 0.1, edges: false });
 add({ id: "dial-crown-neck", kind: "box", size: [5, 4.8, 5], r: 1.2, at: [DIAL[0] + DIAL_R + 1.5, 0, DIAL_Z + 2], tone: "mid" });
 add({ id: "dial-crown", kind: "cylinder", r: 3.2, h: 2.6, segments: 24, rot: [0, 90, 0], at: [DIAL[0] + DIAL_R + 4.9, 0, DIAL_Z + 5.5], tone: "mid" });
 add({ id: "dial-hub", kind: "cylinder", r: 1.6, h: 0.6, at: [...DIAL, DIAL_TOP], tone: "mid", edges: false });
@@ -99,6 +102,7 @@ export const scene = {
   width: 600,
   height: 380,
   camera: { azimuth: 42, elevation: 30 },
+  env: { intensity: 0.9 },
   pad: 0.04,
   parts,
 };

@@ -12,6 +12,7 @@ const G = ${G}, ROLL = ${ROLL}, COIN = ${JSON.stringify(COIN)}, SLOT = ${JSON.st
 const CHUTE = ${JSON.stringify(CHUTE)}, CASH = ${JSON.stringify(CASH)}, SWITCH_Z = ${SWITCH_Z}, SWITCHES = ${JSON.stringify(SWITCHES)};
 const { THREE } = fig;
 const front = -${-scene.parts.find((p) => p.id === "coin-door").at[1]};
+const crt = fig.shaders.get("screen");
 const screen = fig.screens.get("screen"), marquee = fig.screens.get("marquee"), meterWin = fig.screens.get("meter-window");
 const tubeLamp = fig.parts.get("marquee-tube"), stick = fig.parts.get("stick"), fire = fig.parts.get("fire"), wire = fig.parts.get("switch-wire");
 const lamps = [0, 1].map((i) => fig.parts.get("coin-lamp-" + i));
@@ -84,15 +85,10 @@ function paintScreen(now) {
   ctx.fillStyle = "#050607"; ctx.fillRect(0, 0, W, H);
   const p = power.at;
   if (p > 0.002) {
+    // The CRT shader collapses the raster (uVertical: the monitor lies on its side, so to a vertical line,
+    // then a dot), warms it up, scans and masks it; the canvas holds only the picture the board draws.
     ctx.save();
-    // The monitor lies on its side: switched off, the picture collapses to a vertical line, then a dot.
-    ctx.translate(W / 2, H / 2);
-    ctx.scale(p > 0.5 ? (p - 0.5) * 2 + 0.006 : 0.006, p > 0.5 ? 1 : Math.max(0.01, p * 2));
-    ctx.translate(-W / 2, -H / 2);
-    if (p <= 0.5) { ctx.fillStyle = "#eef6ff"; ctx.fillRect(0, 0, W, H); }
-    else {
-      const warm = clamp(since / 2, 0, 1);
-      ctx.globalAlpha = warm;
+    {
       ctx.fillStyle = "#e9f1ff"; ctx.font = "bold 30px ui-monospace, Menlo, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       if (since < 2) {} else if (since < 3.6) {
         ctx.fillText("RAM OK", W / 2, H * 0.4); if (since > 2.8) ctx.fillText("ROM OK", W / 2, H * 0.5);
@@ -105,11 +101,13 @@ function paintScreen(now) {
         ctx.fillText(credits ? "PUSH START" : "INSERT COIN", W / 2, 60);
         ctx.font = "bold 24px ui-monospace, Menlo, monospace"; ctx.fillText("CREDIT " + credits, W / 2, H - 36);
       }
-      ctx.globalAlpha = 0.18; ctx.fillStyle = "#000"; for (let x = 0; x < W; x += 3) ctx.fillRect(x, 0, 1, H); ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
   screen.update();
+  crt.uniforms.uPower.value = clamp(p, 0, 1);
+  crt.uniforms.uWarm.value = on ? clamp(since / 2, 0, 1) : 1;
+  fig.time(still.matches ? 0 : now);
 }
 function paintMeter() {
   const { ctx, canvas } = meterWin;

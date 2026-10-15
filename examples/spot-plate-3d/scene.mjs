@@ -36,7 +36,7 @@ GAPS.forEach((gap, row) => {
   add({ id: `well-${row}`, kind: "box", size: [WELL_HALF * 2, WELL_D, INLAY], r: WELL_HALF - 0.5, at: [rowX(row), rowY(row) + WELL_D / 2, TRAY_H], tone: "lo", edges: false });
   for (let k = 0; k <= row; k++) add({ id: `well-mark-${row}-${k}`, kind: "sphere", r: 0.9, at: [rowX(row) - WELL_HALF + 4 + k * 3.4, rowY(row) + WELL_D + 5, TRAY_H], tone: "hi", edges: false });
   add({ id: `datum-${row}`, kind: "box", size: [WELL_HALF * 2 - 8, 0.8, 0.3], at: [rowX(row), rowY(row) + DATUM_Y, TRAY_H + INLAY], tone: "faint", edges: false });
-  add({ id: `drops-${row}`, kind: "plane", size: [WELL_HALF * 2 - 2, WELL_D - 2], at: [rowX(row), rowY(row) + WELL_D / 2, TRAY_H + INLAY], glass: true, color: "#cfe3ff", opacity: 0.6, edges: false });
+  add({ id: `drops-${row}`, kind: "plane", size: [WELL_HALF * 2 - 2, WELL_D - 2], at: [rowX(row), rowY(row) + WELL_D / 2, TRAY_H + INLAY], glass: true, color: "#ffffff", material: { transmission: 0.9, ior: 1.5, thickness: 3, rough: 0.04, iridescence: 0.25 }, edges: false });
 });
 
 // The deck with the feeler fan: pivot stack, six blades (one per gap) and a lead blade, a stop pin per gap and a scale.
@@ -84,5 +84,6 @@ export const scene = {
   height: 400,
   pad: 0.03,
   camera: { azimuth: 50, elevation: 34 },
+  env: { intensity: 1 },
   parts,
 };

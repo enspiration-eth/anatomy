@@ -79,7 +79,7 @@ add({ id: "finger-tip", kind: "lathe", profile: [[0, 0], [2.6, 0.4], [4.4, 2], [
 export const scene = {
   fig: "Fig 1",
   title: "Press and pull",
-  hint: "Press, then pull ← →",
+  hint: "Press, then pull ← → · S shows strain",
   readout: "120.0 × 32.0 · lean 0.0 px",
   size: "figure",
   width: 600,

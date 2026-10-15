@@ -12,6 +12,7 @@ Every Anatomy figure is a three.js scene. This is the contract.
 | `scripts/inline-three.mjs` | Node | `threeImportMap("inline" \| "cdn" \| url)` and `threeModule({ spec, theme, live })` for the page. |
 | `examples/<name>/build.mjs` | Node | Calls `writeThreeFigure` (`scripts/build-three.mjs`): asserts the scene, builds the card, writes the page. `--light`, `--check`, `--three=`. |
 | `kit/three-live.js` | Browser | Inlined before your live code: `loop(stage, step)`, `follow`, `spring`, `idleTour`, `readoutTo`, `still`, `clamp`, `ease`. |
+| `kit/three-looks.js` | Browser (inlined with the runtime) | Procedural textures, the shader library, vertex-colour ramps, the studio environment, instancing. See `references/three-looks.md`. |
 | `kit/three-parts.mjs` | Node and browser | `collector()`, `coilPoints`, `coilAlong`, `cornersOf`, `screw`. |
 
 `three` is the only dependency (`npm install`). The built pages embed it by default (about 2.8 MB, opens offline and from `file://`); they are git-ignored and rebuilt by CI.
@@ -50,10 +51,14 @@ World units are about 1 px of the real thing; x and y on the floor, z up. A part
 | `torus` | `r`, `tube` |
 | `ticks` | `r`, `count`, `every`, `len: [minor, major]`, dial graduations in the part's xy plane |
 | `rail` | `from`, `to`, `step`, `every`, `len`, ruler ticks along x |
+| `disc` | `r`: a flat disc whose uv spans the face (dial faces) |
+| `instances` | `shape`, its size fields, `items: [[x, y, z, rz?], …]`: one geometry drawn many times, counted once |
 | `plane` | `size: [w, h]`; with `screen: [px, px]` it carries a canvas texture, at `fig.screens.get(id)` (`ctx`, `canvas`, `update()`) |
 | `group` | none: an assembly that moves; give its parts `parent` |
 
 Any part may also take `color` / `emissive` (`#rrggbb`, with `glow`), `metal`, `rough`, `opacity`, `glass: true`, and `scale`. A scene may add `lights: [{ at, intensity, distance }]` (point lights, for interiors). Box corners round in the plane of the box's two largest sides.
+
+Beyond tone: `texture`, `shader`, `colors`, `material`, the scene's `env`, and `open` on cylinders. They are in `references/three-looks.md`, with when to use each and when not to. The handle adds `fig.shaders` (by id), `fig.paint(id, fn, ramp)`, `fig.rampColor(ramp, t)` and `fig.time(t)`.
 
 ## 3. Live code
 
@@ -80,4 +85,6 @@ The runtime gives an orthographic camera fitted to the bounds, a key light with 
 
 - Standalone pages are large because three is embedded; use `--three=cdn` or the app's bundler when size matters.
 - The SVG-only proofs (`kit/audit.mjs`, `scripts/lines.mjs`, `scripts/turn-check.mjs`) do not read three.js scenes; interpenetration is checked by eye from close-ups.
+- Procedural textures are drawn once at load (about 5 to 40 ms each); a figure with many distinct textures pays for each.
+- Transmission renders the scene an extra time; keep it to the subject's glass.
 - WebGL is required; without it the stage shows a one-line notice.

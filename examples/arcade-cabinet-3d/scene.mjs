@@ -15,9 +15,9 @@ const FIBRE = { color: "#3c3f45" };
 // Carcass: plinth, right side (in three blocks for its profile), back, top, floor, front boards. The left side is off.
 add({ id: "plinth", kind: "box", size: [CAB.w - 8, CAB.d - 20, 10], r: 2, at: [0, 6, 0], tone: "lo" });
 for (const [i, [x, y]] of cornersOf(0, 6, CAB.w - 8, CAB.d - 20, 10).entries()) add({ id: `leveller-${i}`, kind: "cylinder", r: 5, h: 2, at: [x, y, -2], tone: "lo" });
-add({ id: "side-low", kind: "box", size: [CAB.wall, CAB.d, PANEL_Z - 10], at: [X1 - CAB.wall / 2, 0, 10], tone: "mid" });
-add({ id: "side-mid", kind: "box", size: [CAB.wall, CAB.d - 40, 120], at: [X1 - CAB.wall / 2, 20, PANEL_Z], tone: "mid" });
-add({ id: "side-top", kind: "box", size: [CAB.wall, CAB.d - 20, CAB.h - PANEL_Z - 120], at: [X1 - CAB.wall / 2, 10, PANEL_Z + 120], tone: "mid" });
+add({ id: "side-low", kind: "box", size: [CAB.wall, CAB.d, PANEL_Z - 10], at: [X1 - CAB.wall / 2, 0, 10], tone: "mid", texture: { kind: "wood", project: "box", tile: 120, color: "#5a3f2c" }, rough: 0.75 });
+add({ id: "side-mid", kind: "box", size: [CAB.wall, CAB.d - 40, 120], at: [X1 - CAB.wall / 2, 20, PANEL_Z], tone: "mid", texture: { kind: "wood", project: "box", tile: 120, color: "#5a3f2c" }, rough: 0.75 });
+add({ id: "side-top", kind: "box", size: [CAB.wall, CAB.d - 20, CAB.h - PANEL_Z - 120], at: [X1 - CAB.wall / 2, 10, PANEL_Z + 120], tone: "mid", texture: { kind: "wood", project: "box", tile: 120, color: "#5a3f2c" }, rough: 0.75 });
 add({ id: "back", kind: "box", size: [CAB.w - CAB.wall, CAB.wall, CAB.h - 10], at: [-CAB.wall / 2, Y1 - CAB.wall / 2, 10], tone: "lo" });
 add({ id: "top", kind: "box", size: [CAB.w - CAB.wall, CAB.d - 20, CAB.wall], at: [-CAB.wall / 2, 10, CAB.h - CAB.wall], tone: "mid" });
 add({ id: "floor", kind: "box", size: [CAB.w - CAB.wall, CAB.d - CAB.wall, CAB.wall], at: [-CAB.wall / 2, -CAB.wall / 2, 10], tone: "lo" });
@@ -67,7 +67,8 @@ for (const [i, x] of [34, 50].entries()) {
 export const SCREEN = { w: 92, h: 118, px: [448, 576], z: PANEL_Z + 70, y: Y0 + 40, tilt: -22 };
 add({ id: "monitor", kind: "group", at: [-CAB.wall / 2, SCREEN.y, SCREEN.z], rot: [SCREEN.tilt, 0, 0] });
 add({ id: "bezel", kind: "box", size: [CAB.w - CAB.wall - 2, 3, 150], r: 2, at: [0, 0, -75], tone: "lo", parent: "monitor" });
-add({ id: "screen", kind: "plane", size: [SCREEN.w, SCREEN.h], screen: SCREEN.px, rot: [90, 0, 0], at: [0, -1.7, 0], parent: "monitor" });
+add({ id: "screen", kind: "plane", size: [SCREEN.w, SCREEN.h], screen: SCREEN.px, rot: [90, 0, 0], at: [0, -1.7, 0], parent: "monitor",
+  shader: { name: "crt", uniforms: { uVertical: 1, uLines: SCREEN.px[0] / 3, uGlow: 0.7, uCurve: 0.2, uTint: [0.95, 0.97, 1.0] } } });
 add({ id: "tube-face", kind: "box", size: [SCREEN.w + 10, 8, SCREEN.h + 10], r: 8, at: [0, 5.5, -(SCREEN.h + 10) / 2], tone: "lo", parent: "monitor" });
 add({ id: "tube-cone", kind: "lathe", segments: 4, profile: [[0.1, 0], [62, 0], [52, 22], [18, 50], [9, 54], [9, 84], [0.1, 84]], rot: [-90, 0, 45], at: [0, 9.5, 0], tone: "mid", parent: "monitor" });
 add({ id: "chassis", kind: "box", size: [120, 70, 4], r: 2, at: [0, 60, -72], tone: "mid", parent: "monitor" });
@@ -102,8 +103,8 @@ add({ id: "meter-window", kind: "plane", size: [6, 3], rot: [0, -90, 0], at: [ME
 
 // Logic board on the inside of the right side, power supply on the floor, harness.
 export const BOARD = { x: IX1 - 1.5, y: 30, z: 120 };
-add({ id: "board", kind: "box", size: [2, 90, 70], at: [BOARD.x, BOARD.y, BOARD.z], color: "#1f5a3a" });
-for (let i = 0; i < 18; i++) add({ id: `chip-${i}`, kind: "box", size: [1.6, 12, 4.4], at: [BOARD.x - 1.8, BOARD.y - 36 + (i % 6) * 14, BOARD.z + 12 + Math.floor(i / 6) * 18], color: "#16181b", edges: false });
+add({ id: "board", kind: "box", size: [2, 90, 70], at: [BOARD.x, BOARD.y, BOARD.z], texture: { kind: "pcb", seed: 81 }, rough: 0.6 });
+for (let i = 0; i < 18; i++) add({ id: `chip-${i}`, kind: "box", size: [1.6, 12, 4.4], at: [BOARD.x - 1.8, BOARD.y - 36 + (i % 6) * 14, BOARD.z + 12 + Math.floor(i / 6) * 18], color: "#16181b", rough: 0.4, edges: false });
 add({ id: "edge-connector", kind: "box", size: [4, 60, 6], r: 1, at: [BOARD.x - 2, BOARD.y, BOARD.z - 6], color: "#16181b" });
 add({ id: "psu", kind: "box", size: [40, 50, 26], r: 2, at: [IX1 - 26, Y1 - 40, 10 + CAB.wall], tone: "mid" });
 add({ id: "transformer", kind: "box", size: [22, 22, 22], r: 2, at: [IX1 - 26, Y1 - 82, 10 + CAB.wall], color: "#5b4a3a" });

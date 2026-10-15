@@ -9,12 +9,13 @@ export const PLATE_TOP = DOOR.h + PLATE.h;
 export const DIAL = { r: 52, h: 18, z: PLATE_TOP + 4 };
 export const DIAL_TOP = DIAL.z + DIAL.h;
 export const NUMBERS = 100;
-const GOLD = { color: "#c8a24a", metal: 0.6, rough: 0.35 };
-const CHROME = { color: "#c9ced4", metal: 0.55, rough: 0.25 };
+// Real metals: high metalness needs something to reflect, so the scene sets env (a procedural studio).
+const GOLD = { color: "#d4ad55", metal: 0.9, rough: 0.3 };
+const CHROME = { color: "#d9dde2", metal: 0.95, rough: 0.12 };
 const GUN = { color: "#4b4f55", metal: 0.4, rough: 0.45 };
 
 // Door slab with bolts and a hinge leaf, the raised plate with screws and the fixed index.
-add({ id: "door", kind: "box", size: [DOOR.w, DOOR.d, DOOR.h], r: 6, at: [0, 0, 0], tone: "mid" });
+add({ id: "door", kind: "box", size: [DOOR.w, DOOR.d, DOOR.h], r: 6, at: [0, 0, 0], texture: { kind: "brushed", project: "box", tile: 140 }, metal: 0.5, rough: 0.5 });
 for (const [i, [x, y]] of cornersOf(0, 0, DOOR.w, DOOR.d, 12).entries()) screw(add, `door-bolt-${i}`, x, y, DOOR.h, { r: 2.4 });
 for (let i = 0; i < 3; i++) add({ id: `hinge-knuckle-${i}`, kind: "cylinder", r: 6, h: 46, rot: [90, 0, 0], at: [-DOOR.w / 2 - 6, 90 - i * 70 + 23, 8], tone: "hi" });
 add({ id: "plate", kind: "box", size: [PLATE.w, PLATE.d, PLATE.h], r: 10, at: [0, 0, DOOR.h], tone: "hi" });
@@ -35,6 +36,8 @@ for (let i = 0; i < 48; i++) {
   const a = (i / 48) * Math.PI * 2;
   add({ id: `rib-${i}`, kind: "box", size: [1.6, 2.2, DIAL.h - 9], at: [Math.cos(a) * (DIAL.r - 1.6), Math.sin(a) * (DIAL.r - 1.6), 6.5], rot: [0, 0, (a * 180) / Math.PI], tone: "mid", edges: false, parent: "dial" });
 }
+// The numbers, printed from NUMBERS: 0 to 90 by tens, rising anticlockwise as on a real lock dial.
+add({ id: "dial-numbers", kind: "disc", r: DIAL.r - 4, segments: 96, at: [0, 0, DIAL.h + 0.03], texture: { kind: "dial", count: NUMBERS, every: 10, from: 0, step: 10, ring: 0.99, font: 0.075, reverse: true }, rough: 0.5, metal: 0, parent: "dial" });
 add({ id: "dial-face-ring", kind: "torus", r: DIAL.r - 10, tube: 0.4, segments: 96, at: [0, 0, DIAL.h], tone: "lo", edges: false, parent: "dial" });
 add({ id: "dial-hub", kind: "cylinder", r: 9, h: 2, segments: 48, at: [0, 0, DIAL.h], tone: "mid", parent: "dial" });
 
@@ -75,6 +78,7 @@ add({ id: "thumb-link", kind: "cylinder", r: 2.4, h: 10, rot: [0, 90, 0], at: [1
 add({ id: "thumb-tip", kind: "sphere", r: 2.4, at: [11.6, 0, 0], ...CHROME, edges: false, parent: "thumb" });
 // The LED under the index fingertip, on the dial face.
 add({ id: "led", kind: "cylinder", r: 2.2, h: 1, at: [HAND.at[0] + HAND.scale * (17 + 11 + 8 + 6 - 1.2), HAND.at[1] - HAND.scale * 3.5, H], lit: true, edges: false, parent: "dial" });
+add({ id: "led-glow", kind: "sphere", r: 6, at: [HAND.at[0] + HAND.scale * (17 + 11 + 8 + 6 - 1.2), HAND.at[1] - HAND.scale * 3.5, H + 0.5], edges: false, parent: "dial", shader: { name: "glow", uniforms: { uColor: "#3cff8a", uLevel: 0, uPower: 2 } } });
 
 export const scene = {
   fig: "Fig 3D",
@@ -86,5 +90,6 @@ export const scene = {
   height: 430,
   pad: 0.03,
   camera: { azimuth: 45, elevation: 34 },
+  env: { intensity: 1 },
   parts,
 };

@@ -11,7 +11,7 @@ metadata:
 
 This skill makes figures like a small instrument on a bench: a heavy base on feet, rails with tick rulers, a carriage on bushings, knurled knobs, coil springs, a dial gauge whose needle moves, screws as tiny dots. The reader understands the idea because they recognise the machine. Every number the figure shows comes from the same model that moves its parts.
 
-**Output target: three.js.** Every figure you make is a three.js scene, not an SVG drawing. You describe the parts as plain data (a *scene*, validated by `kit/three-scene.mjs`), and `kit/three-runtime.js` turns it into meshes with real depth, lighting, shadows and edge lines, seen through an orthographic camera at the figure's isometric azimuth and elevation. Live code moves named parts (`fig.parts.get("carriage").position.x = …`) and calls `fig.render()`. Depth order, hidden lines and occlusion come from the depth buffer, so there is no painter's order to tune. Read `references/three.md` before you start; it is the contract for the scene, the runtime and the page.
+**Output target: three.js.** Every figure you make is a three.js scene, not an SVG drawing. You describe the parts as plain data (a *scene*, validated by `kit/three-scene.mjs`), and `kit/three-runtime.js` turns it into meshes with real depth, lighting, shadows and edge lines, seen through an orthographic camera at the figure's isometric azimuth and elevation. Live code moves named parts (`fig.parts.get("carriage").position.x = …`) and calls `fig.render()`. Depth order, hidden lines and occlusion come from the depth buffer, so there is no painter's order to tune. Read `references/three.md` before you start; it is the contract for the scene, the runtime and the page. When tone cannot say it (what a surface is made of, a field, a plume, a screen, where heat or load goes) reach for the expressive looks in `references/three-looks.md`: procedural textures, a shader library, vertex-colour maps, physical glass and metal with a studio environment, and instancing, each declared as data and validated.
 
 Start from `examples/dial-indicator-3d/`: `scene.mjs` is the scene (64 solids), `build.mjs` validates it and writes a standalone page. `node examples/dial-indicator-3d/build.mjs` writes the dark page, `--light` the light one, `--check` only validates, and `--three=cdn` (or a URL) loads three from a CDN instead of embedding it.
 
@@ -98,6 +98,7 @@ The kit is in `kit/`:
 | File | Use it for |
 |---|---|
 | `kit/three-scene.mjs` | **The scene contract.** `validateScene(spec)` returns a list of problems, `assertScene(spec)` throws, `solidCount(spec)`, plus the `KINDS`, `TONES` and `SIZES` tables. |
+| `kit/three-looks.js` | **Expressive looks**, inlined with the runtime: procedural textures (`brushed`, `knurl`, `dial`, `ruler`, `label`, `pcb`, `paper`, `wood`), shaders (`plume`, `ripple`, `caustics`, `crt`, `glow`), ramps (`heat`, `stress`, `depth`, `temper`), the PMREM studio environment, instancing. |
 | `kit/three-runtime.js` | **The browser runtime.** `mountScene(stage, spec, { theme })` builds meshes, edge lines, lights, contact shadows and the isometric orthographic camera, and returns `{ THREE, scene, camera, renderer, parts, render, toWorld }`. |
 | `scripts/inline-three.mjs` | `threeImportMap(mode)` resolves `three` by embedding the installed copy (`"inline"`, works offline and from `file://`), from jsDelivr (`"cdn"`) or any URL; `threeModule({ spec, theme, live })` returns the page's module script. |
 | `kit/iso-kit.mjs` | Still used by three.js pages for the card and page (`plateHtml`, `pageHtml`, `ISO_CSS`). Its SVG geometry and renderer below are the legacy SVG path. |
@@ -120,7 +121,7 @@ The kit is in `kit/`:
 Pick the path that fits the project:
 
 - **Standalone HTML (default).** Write a `scene.mjs` and a `build.mjs` like `examples/dial-indicator-3d/`: assert the scene, wrap an empty `.iso-stage` in `plateHtml`, write the page with `pageHtml`, put `threeImportMap()` in the head and `threeModule({ spec, theme, live })` before `</body>`.
-- **An app with a bundler (Vite, Next.js, …).** Add `three` to the app, copy `kit/three-runtime.js` and `kit/three-scene.mjs`, import `mountScene` in a client component and call it on a `ref`'d element in an effect; the bundler resolves `three`. Keep the scene in its own module so the server can validate it.
+- **An app with a bundler (Vite, Next.js, …).** Add `three` to the app, copy `kit/three-runtime.js`, `kit/three-looks.js` and `kit/three-scene.mjs`, import `mountScene` in a client component and call it on a `ref`'d element in an effect; the bundler resolves `three`. Keep the scene in its own module so the server can validate it.
 
 The SVG paths, only when the user asks for SVG:
 
@@ -188,6 +189,7 @@ Read `references/3d.md` first.
 
 Read these as you need them:
 
+- `references/three-looks.md`: textures, shaders, vertex colours, physical materials, the environment and instancing: when each earns its place, the rules, failure modes and checks.
 - `references/three.md`: **read first.** The three.js target: the scene format, every part kind, tones and materials, the runtime, the page, live code, verification and limits.
 
 - `references/craft.md`: the look in depth, including the parts vocabulary with code, tone tables, painter's order patterns, round parts, pipes and harnesses, exploded views, screens on faces, and the anti-patterns that got figures rejected. Read it before designing.

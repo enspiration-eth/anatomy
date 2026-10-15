@@ -25,8 +25,9 @@ const wells = GAPS.map((gap, row) => {
   mesh.castShadow = true;
   // Plane-local y runs along the well; the well's start is at -d/2.
   const big = [0, -d / 2 - 1 + BIG_Y], small = [0, -d / 2 - 1 + DATUM_Y + gap + RB];
-  return { gap, geometry, big, small };
+  return { gap, geometry, big, small, mesh };
 });
+const RAMP = [[0, "#ffffff"], [1, fig.theme === "dark" ? "#7fb6ff" : "#5a8fe0"]], tint = new THREE.Color();
 function shape(merge) {
   const k = reachOf(merge);
   for (const well of wells) {
@@ -38,6 +39,9 @@ function shape(merge) {
     }
     pos.needsUpdate = true;
     well.geometry.computeVertexNormals();
+    // Thickness as colour: a vertex ramp on the glass's own height, so the neck of a merged pair reads as
+    // thinner than either drop (the smooth minimum dips there) even where the outline hides it.
+    fig.paint(well.mesh.name, (x, y, z) => fig.rampColor(RAMP, Math.max(0, z) / GLASS_H, tint));
   }
 }
 const blades = BLADES.map((b) => ({ ...b, node: fig.parts.get(b.id) }));

@@ -18,12 +18,15 @@ add({ id: "handle-recess", kind: "box", size: [60, 8, 1], r: 3, at: [0, CASE.d /
 
 // CRT bezel, screen and its frame.
 add({ id: "bezel", kind: "box", size: [124, 4, 100], r: 5, rot: [0, 0, 0], at: [0, FRONT - 2, SCREEN.z - 50], tone: "hi" });
-add({ id: "screen", kind: "plane", size: [SCREEN.w, SCREEN.h], screen: SCREEN.px, rot: [90, 0, 0], at: [0, FRONT - 4.3, SCREEN.z] });
+add({ id: "screen", kind: "plane", size: [SCREEN.w, SCREEN.h], screen: SCREEN.px, rot: [90, 0, 0], at: [0, FRONT - 4.3, SCREEN.z],
+  // The CRT shader owns everything the tube does to the picture: curvature, scan lines, mask, glow, power collapse.
+  shader: { name: "crt", uniforms: { uLines: SCREEN.px[1] / 4, uGlow: 0.55, uCurve: 0.16, uTint: [0.92, 1.0, 0.95] } } });
 for (const [i, [w, h, x, z]] of [[SCREEN.w + 6, 3, 0, SCREEN.z + SCREEN.h / 2 + 1.5], [SCREEN.w + 6, 3, 0, SCREEN.z - SCREEN.h / 2 - 4.5], [3, SCREEN.h, -SCREEN.w / 2 - 1.5, SCREEN.z - SCREEN.h / 2], [3, SCREEN.h, SCREEN.w / 2 + 1.5, SCREEN.z - SCREEN.h / 2]].entries())
   add({ id: `screen-frame-${i}`, kind: "box", size: [w, 1.2, h], at: [x, FRONT - 4.6, z], tone: "lo" });
 add({ id: "brightness-knob", kind: "cylinder", r: 2.4, h: 2, rot: [90, 0, 0], at: [54, FRONT - 4, SCREEN.z - 46], tone: "mid" });
 add({ id: "contrast-knob", kind: "cylinder", r: 2.4, h: 2, rot: [90, 0, 0], at: [46, FRONT - 4, SCREEN.z - 46], tone: "mid" });
 add({ id: "power-led", kind: "sphere", r: 1.3, at: [-54, FRONT - 4.2, SCREEN.z - 46], lit: true, edges: false });
+add({ id: "power-led-glow", kind: "sphere", r: 3.6, at: [-54, FRONT - 4.2, SCREEN.z - 46], edges: false, shader: { name: "glow", uniforms: { uColor: "#5cff8a", uLevel: 1, uPower: 2.6 } } });
 
 // Floppy drive: faceplate, slot, latch, busy light; speaker grille.
 add({ id: "drive-plate", kind: "box", size: [72, 2, 20], r: 2, at: [-22, FRONT - 1, 26], tone: "hi" });
@@ -34,7 +37,8 @@ for (let i = 0; i < 7; i++) add({ id: `grille-${i}`, kind: "box", size: [34, 1, 
 
 // Side: vents, rocker switch, keyboard port.
 const SIDE = -CASE.w / 2;
-for (let i = 0; i < 9; i++) add({ id: `vent-${i}`, kind: "box", size: [1, 46, 1.8], r: 0.8, at: [SIDE - 0.5, 18, 128 + i * 4], tone: "lo", edges: false });
+// Nine identical slots: one geometry, drawn nine times.
+add({ id: "vents", kind: "instances", shape: "box", size: [1, 46, 1.8], items: Array.from({ length: 9 }, (_, i) => [SIDE - 0.5, 18, 128 + i * 4]), tone: "lo" });
 add({ id: "switch-housing", kind: "box", size: [3, 14, 20], r: 1.5, at: [SIDE - 1.5, 46, 34], tone: "lo" });
 add({ id: "rocker", kind: "group", at: [SIDE - 4.2, 46, 44] });
 add({ id: "rocker-cap", kind: "box", size: [2.4, 10, 16], r: 1, at: [0, 0, -8], tone: "hi", parent: "rocker" });

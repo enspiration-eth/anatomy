@@ -18,10 +18,11 @@ export const PAPER = { w: Math.ceil(OUT.w * SHADOW + 6), d: Math.ceil(OUT.d * SH
 
 // Floor board, feet, paper with its clips.
 const BASE = { w: PAPER.w + 110, d: PAPER.d + 52, x: -20 };
-add({ id: "base", kind: "box", size: [BASE.w, BASE.d, 14], r: 12, at: [BASE.x, 0, -14], tone: "lo" });
+add({ id: "base", kind: "box", size: [BASE.w, BASE.d, 14], r: 12, at: [BASE.x, 0, -14], tone: "lo", texture: { kind: "wood", project: "top", tile: 160, color: "#4a3426" }, rough: 0.7 });
 for (const [i, sx] of [-1, 1].entries()) for (const [j, sy] of [-1, 1].entries())
   add({ id: `foot-${i}-${j}`, kind: "cylinder", r: 9, h: 7, at: [BASE.x + sx * (BASE.w / 2 - 24), sy * (BASE.d / 2 - 24), -21], tone: "lo" });
-add({ id: "paper", kind: "plane", size: [PAPER.w, PAPER.d], at: [0, 0, Z_PAPER] });
+const FIELD = { uBeat: M.BEAT, uHalf: START.spacing / 2, uSource: [XS, 0] };
+add({ id: "paper", kind: "plane", size: [PAPER.w, PAPER.d], at: [0, 0, Z_PAPER], shader: { name: "caustics", uniforms: { ...FIELD, uLift: optics.magnification, uLamp: [LAMP[0], LAMP[1]], uInside: [IN.w / 2 - 8, IN.d / 2 - 8] } } });
 add({ id: "paper-sheet", kind: "box", size: [PAPER.w + 2, PAPER.d + 2, 0.5], at: [0, 0, 0], tone: "hi", edges: false });
 for (const [i, [x, y]] of [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [a * (PAPER.w / 2 - 6), b * (PAPER.d / 2 - 6)]).entries())
   add({ id: `clip-${i}`, kind: "box", size: [10, 10, 1.6], r: 2, at: [x, y, 0.6], tone: "mid" });
@@ -36,11 +37,11 @@ for (const [i, [sx, sy]] of [[1, 1], [-1, 1], [1, -1], [-1, -1]].entries()) {
   add({ id: `leg-knob-${i}`, kind: "cylinder", r: 5.6, h: 3, at: [x, y, 34], tone: "mid" });
   add({ id: `leg-bracket-${i}`, kind: "box", size: [14, 14, 6], r: 2, at: [x, y, Z.rail - 6], tone: "mid" });
 }
-add({ id: "rail-front", kind: "box", size: [OUT.w, 9, Z.bed - Z.rail], r: 1.5, at: [0, -OUT.d / 2 + 4.5, Z.rail], tone: "mid" });
-add({ id: "rail-back", kind: "box", size: [OUT.w, 9, Z.bed - Z.rail], r: 1.5, at: [0, OUT.d / 2 - 4.5, Z.rail], tone: "mid" });
-add({ id: "rail-left", kind: "box", size: [9, OUT.d - 18, Z.bed - Z.rail], r: 1.5, at: [-OUT.w / 2 + 4.5, 0, Z.rail], tone: "mid" });
-add({ id: "rail-right", kind: "box", size: [9, OUT.d - 18, Z.bed - Z.rail], r: 1.5, at: [OUT.w / 2 - 4.5, 0, Z.rail], tone: "mid" });
-add({ id: "bed", kind: "box", size: [IN.w, IN.d, Z.floor - Z.bed], at: [0, 0, Z.bed], glass: true, color: "#9fb4b0", opacity: 0.35, edges: true });
+add({ id: "rail-front", kind: "box", size: [OUT.w, 9, Z.bed - Z.rail], r: 1.5, at: [0, -OUT.d / 2 + 4.5, Z.rail], tone: "mid", texture: { kind: "brushed", project: "box", tile: 60 }, metal: 0.6, rough: 0.4 });
+add({ id: "rail-back", kind: "box", size: [OUT.w, 9, Z.bed - Z.rail], r: 1.5, at: [0, OUT.d / 2 - 4.5, Z.rail], tone: "mid", texture: { kind: "brushed", project: "box", tile: 60 }, metal: 0.6, rough: 0.4 });
+add({ id: "rail-left", kind: "box", size: [9, OUT.d - 18, Z.bed - Z.rail], r: 1.5, at: [-OUT.w / 2 + 4.5, 0, Z.rail], tone: "mid", texture: { kind: "brushed", project: "box", tile: 60 }, metal: 0.6, rough: 0.4 });
+add({ id: "rail-right", kind: "box", size: [9, OUT.d - 18, Z.bed - Z.rail], r: 1.5, at: [OUT.w / 2 - 4.5, 0, Z.rail], tone: "mid", texture: { kind: "brushed", project: "box", tile: 60 }, metal: 0.6, rough: 0.4 });
+add({ id: "bed", kind: "box", size: [IN.w, IN.d, Z.floor - Z.bed], at: [0, 0, Z.bed], glass: true, color: "#cfe0dc", material: { transmission: 0.92, ior: 1.52, thickness: 4, rough: 0.05, tint: "#bfe3d8", tintDistance: 40 }, edges: true });
 const wall = (id, w, d, x, y) => add({ id, kind: "box", size: [w, d, Z.top - Z.bed], at: [x, y, Z.bed], tone: "mid" });
 wall("wall-front", OUT.w, 9, 0, -OUT.d / 2 + 4.5);
 wall("wall-back", OUT.w, 9, 0, OUT.d / 2 - 4.5);
@@ -48,7 +49,7 @@ wall("wall-left", 9, OUT.d - 18, -OUT.w / 2 + 4.5, 0);
 wall("wall-right", 9, OUT.d - 18, OUT.w / 2 - 4.5, 0);
 for (const [i, [w, d, x, y]] of [[IN.w, 8, 0, -IN.d / 2 + 4], [IN.w, 8, 0, IN.d / 2 - 4], [8, IN.d - 16, -IN.w / 2 + 4, 0], [8, IN.d - 16, IN.w / 2 - 4, 0]].entries())
   add({ id: `beach-${i}`, kind: "box", size: [w, d, Z.water - Z.floor + 1.5], at: [x, y, Z.floor], tone: "lo", edges: false });
-add({ id: "water", kind: "plane", size: [IN.w - 16, IN.d - 16], at: [0, 0, Z.water] });
+add({ id: "water", kind: "plane", size: [IN.w - 16, IN.d - 16], at: [0, 0, Z.water], shader: { name: "ripple", uniforms: FIELD } });
 for (const [i, [x, y]] of [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [a * (OUT.w / 2 - 4.5), b * (OUT.d / 2 - 4.5)]).entries()) screw(add, `rim-screw-${i}`, x, y, Z.top, { r: 1.6 });
 
 // Vibrator: a beam across the rim, a bar hung on two springs, a motor with an eccentric, two dippers.
@@ -111,5 +112,6 @@ export const scene = {
   height: 560,
   pad: 0.02,
   camera: { azimuth: 40, elevation: 44 },
+  env: { intensity: 0.8 },
   parts,
 };

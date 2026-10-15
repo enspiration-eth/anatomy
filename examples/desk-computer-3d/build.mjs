@@ -11,6 +11,8 @@ const rest = new Map(KEYS.map((k) => [k.id, fig.parts.get(k.id).position.z]));
 const down = new Map(); // key id -> { at, rate, hold }
 const status = stage.parentElement.querySelector("[data-status]");
 const COLS = 26, LINES = 6;
+const crt = fig.shaders.get("screen"), ledGlow = fig.shaders.get("power-led-glow");
+let warm = 1; // the heater: the picture brightens and sharpens over about a second after switch-on
 let text = "", on = true, power = { at: 1, rate: 0 }, blink = 0;
 const tour = idleTour(4000, () => runner.kick());
 const DEMO = "HELLO. I AM A DESK COMPUTER.\\nTYPE ON ME.";
@@ -35,24 +37,17 @@ function paint(now) {
   const { ctx, canvas } = screen, W = canvas.width, H = canvas.height;
   ctx.fillStyle = "#0a0c0b"; ctx.fillRect(0, 0, W, H);
   const p = power.at;
-  if (p <= 0.001) { screen.update(); return; }
-  // A CRT collapses to a line, then to a dot: height first, then width.
-  const sy = Math.min(1, p * 2), sx = Math.min(1, Math.max(0.012, p * 2 - 0)) ;
-  ctx.save();
-  ctx.translate(W / 2, H / 2);
-  ctx.scale(p > 0.5 ? 1 : Math.max(0.01, (p - 0.02) * 2), p > 0.5 ? (p - 0.5) * 2 + 0.004 : 0.004);
-  ctx.translate(-W / 2, -H / 2);
   const glow = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W * 0.7);
   glow.addColorStop(0, "#16201b"); glow.addColorStop(1, "#0b0f0d");
-  ctx.fillStyle = p > 0.5 ? glow : "#d8ffe8"; ctx.fillRect(0, 0, W, H);
-  if (p > 0.5) {
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  if (p > 0.001) {
     ctx.fillStyle = "#c8f7d8"; ctx.font = "bold 28px ui-monospace, Menlo, monospace"; ctx.textBaseline = "top";
-    ctx.globalAlpha = 0.55; ctx.fillText("\\u25C6 DESK/84", 28, 22); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.55; ctx.fillText("\u25C6 DESK/84", 28, 22); ctx.globalAlpha = 1;
     const lines = linesOf(text);
     lines.forEach((line, i) => ctx.fillText(line, 28, 74 + i * 46));
     const last = lines[lines.length - 1] ?? "";
     if (Math.floor(now * 2) % 2 === 0 || still.matches) ctx.fillRect(28 + ctx.measureText(last).width + 2, 74 + Math.max(0, lines.length - 1) * 46, 16, 30);
-    ctx.globalAlpha = 0.08; ctx.fillStyle = "#000"; for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2); ctx.globalAlpha = 1;
   }
   ctx.restore();
   screen.update();
@@ -61,6 +56,10 @@ function draw(now) {
   for (const [id, state] of down) fig.parts.get(id).position.z = rest.get(id) - state.at * TRAVEL;
   rocker.rotation.x = (on ? -1 : 1) * 0.18;
   led.material.emissiveIntensity = on ? 0.9 : 0;
+  ledGlow.uniforms.uLevel.value = power.at;
+  crt.uniforms.uPower.value = power.at;
+  crt.uniforms.uWarm.value = 0.25 + 0.75 * warm;
+  fig.time(still.matches ? 0 : now);
   led.material.color.set(on ? fig.colors.lit : fig.colors.lo);
   paint(now);
   readoutTo(stage, (on ? "on" : "off") + " · " + text.length + " chars");
@@ -80,6 +79,9 @@ const runner = loop(stage, (dt, now) => {
   }
   if (spring(power, on ? 1 : 0, dt, 60, 16)) busy = true;
   power.at = Math.min(1, Math.max(0, power.at));
+  const warmWant = on ? 1 : 0;
+  warm = on ? follow(warm, warmWant, dt, 0.6) : 0;
+  if (warm !== warmWant) busy = true;
   draw(now);
   return busy || on; // the cursor blinks while on
 });

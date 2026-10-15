@@ -1,12 +1,14 @@
 // Browser runtime for three.js figures. Inlined as an ES module by
 // scripts/inline-three.mjs; "three" comes from the page's import map.
 import * as THREE from "three";
+import { TEXTURES, SHADERS, RAMPS, rampColor, paintVertices, bakeColors, projectUVs, studioEnvironment, instancesOf } from "./three-looks.js";
 
 const PALETTE = {
   dark: { bg: 0x161614, lo: 0x2c2c29, mid: 0x4a4a45, hi: 0x8a8a82, faint: 0x3a3a36, lit: 0xffffff, edge: 0x0d0d0c, line: 0x9a9a92 },
   light: { bg: 0xf4f4ef, lo: 0xb9b9b1, mid: 0xd6d6cf, hi: 0xf2f2ec, faint: 0xc8c8c0, lit: 0x111111, edge: 0x3a3a36, line: 0x55554f },
 };
 
+const isEffect = (part) => part.shader && (part.shader.name === "plume" || part.shader.name === "glow");
 const rad = (deg) => (deg * Math.PI) / 180;
 
 function roundedBox(size, r) {
@@ -57,11 +59,12 @@ function geometryOf(part) {
   const seg = part.segments ?? 48;
   switch (part.kind) {
     case "box": return roundedBox(part.size, part.r ?? 0);
-    case "cylinder": return new THREE.CylinderGeometry(part.r2 ?? part.r, part.r, part.h, seg).rotateX(Math.PI / 2).translate(0, 0, part.h / 2);
+    case "cylinder": return new THREE.CylinderGeometry(part.r2 ?? part.r, part.r, part.h, seg, part.open ? 24 : 1, !!part.open).rotateX(Math.PI / 2).translate(0, 0, part.h / 2);
     case "lathe": return new THREE.LatheGeometry(part.profile.map(([r, z]) => new THREE.Vector2(r, z)), seg).rotateX(Math.PI / 2);
     case "tube": return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(part.points.map((p) => new THREE.Vector3(...p))), part.points.length * 16, part.r, 16, false);
     case "sphere": return new THREE.SphereGeometry(part.r, seg, Math.max(8, seg / 2));
     case "torus": return new THREE.TorusGeometry(part.r, part.tube, 16, seg);
+    case "disc": return new THREE.CircleGeometry(part.r, seg);
     case "plane": return new THREE.PlaneGeometry(part.size[0], part.size[1]);
     default: return null;
   }
@@ -90,21 +93,41 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const scene = new THREE.Scene();
   const parts = new Map();
   const screens = new Map();
+  const shaders = new Map();
+  const screenOf = (part) => {
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = part.screen;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    screens.set(part.id, { canvas, ctx: canvas.getContext("2d"), texture, update: () => (texture.needsUpdate = true) });
+    return texture;
+  };
+  const hex = (n) => `#${n.toString(16).padStart(6, "0")}`;
   const custom = (part) => {
-    if (part.screen) {
-      const canvas = document.createElement("canvas");
-      [canvas.width, canvas.height] = part.screen;
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      screens.set(part.id, { canvas, ctx: canvas.getContext("2d"), texture, update: () => (texture.needsUpdate = true) });
-      return new THREE.MeshBasicMaterial({ map: texture, toneMapped: false });
+    if (part.shader) {
+      const map = part.screen ? screenOf(part) : null;
+      const shaderMaterial = SHADERS[part.shader.name]({ uniforms: part.shader.uniforms ?? {}, theme, map, part });
+      shaders.set(part.id, shaderMaterial);
+      return shaderMaterial;
     }
-    if (!part.color && !part.emissive && !part.opacity && part.metal === undefined && !part.glass) return null;
-    const base = part.color ?? (part.lit ? `#${colors.lit.toString(16).padStart(6, "0")}` : `#${colors[part.tone ?? "mid"].toString(16).padStart(6, "0")}`);
-    const options = { side: THREE.DoubleSide, color: base, roughness: part.rough ?? (part.glass ? 0.08 : 0.55), metalness: part.metal ?? (part.glass ? 0 : 0.15) };
+    if (part.screen) return new THREE.MeshBasicMaterial({ map: screenOf(part), toneMapped: false });
+    const m = part.material ?? {};
+    if (!part.color && !part.emissive && !part.opacity && part.metal === undefined && !part.glass && !part.texture && !part.material && !part.colors) return null;
+    const look = part.texture ? TEXTURES[part.texture.kind]({ ...part.texture, theme }) : {};
+    const base = look.plain || part.colors || m.transmission ? (part.color ?? "#ffffff") : part.color ?? (part.lit ? hex(colors.lit) : hex(colors[part.tone ?? "mid"]));
+    const options = { side: THREE.DoubleSide, color: base, roughness: m.rough ?? part.rough ?? (part.glass ? 0.08 : 0.55), metalness: m.metal ?? part.metal ?? (part.glass ? 0 : 0.15) };
+    for (const key of ["map", "roughnessMap", "bumpMap", "bumpScale"]) if (look[key] !== undefined) options[key] = look[key];
+    if (part.texture?.repeat) for (const key of ["map", "roughnessMap", "bumpMap"]) options[key]?.repeat.set(...part.texture.repeat);
     if (part.emissive) Object.assign(options, { emissive: part.emissive, emissiveIntensity: part.glow ?? 1 });
-    if (part.glass || part.opacity) Object.assign(options, { transparent: true, opacity: part.opacity ?? 0.35, depthWrite: !part.glass });
-    return part.glass ? new THREE.MeshPhysicalMaterial({ ...options, clearcoat: 1, clearcoatRoughness: 0.05 }) : new THREE.MeshStandardMaterial(options);
+    if (part.colors) options.vertexColors = true;
+    const physical = part.glass || m.transmission || m.clearcoat || m.sheen || m.iridescence;
+    if ((part.glass && !m.transmission) || part.opacity) Object.assign(options, { transparent: true, opacity: part.opacity ?? 0.35, depthWrite: !part.glass });
+    if (!physical) return new THREE.MeshStandardMaterial(options);
+    const extra = { clearcoat: m.clearcoat ?? (part.glass ? 1 : 0), clearcoatRoughness: m.clearcoatRough ?? 0.05 };
+    if (m.transmission) Object.assign(extra, { transmission: m.transmission, ior: m.ior ?? 1.5, thickness: m.thickness ?? 1, attenuationColor: m.tint ?? "#ffffff", attenuationDistance: m.tintDistance ?? Infinity });
+    if (m.sheen) Object.assign(extra, { sheen: m.sheen, sheenColor: m.sheenColor ?? "#ffffff", sheenRoughness: 0.6 });
+    if (m.iridescence) Object.assign(extra, { iridescence: m.iridescence, iridescenceIOR: 1.3 });
+    return new THREE.MeshPhysicalMaterial({ ...options, ...extra });
   };
   const materials = {};
   const material = (tone, lit) => {
@@ -123,12 +146,19 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     let node;
     if (part.kind === "group") node = new THREE.Group();
     else if (part.kind === "ticks" || part.kind === "rail") node = new THREE.LineSegments(tickLines(part), lineMaterial(part));
-    else {
+    else if (part.kind === "instances") {
+      node = instancesOf(part, custom(part) ?? material(part.tone ?? "mid", part.lit));
+      node.castShadow = node.receiveShadow = true;
+    } else {
       const geometry = geometryOf(part);
+      if (part.texture?.project) projectUVs(geometry, part.texture.tile ?? 20, part.texture.project);
       node = new THREE.Mesh(geometry, custom(part) ?? material(part.tone ?? "mid", part.lit));
       if (part.kind === "plane") part.edges = part.edges ?? false;
       node.castShadow = part.kind !== "plane" && !part.glass;
       node.receiveShadow = true;
+      if (part.colors) bakeColors(node, part.colors);
+      if (part.shader) node.castShadow = false;
+      if (isEffect(part)) { node.userData.effect = true; node.renderOrder = 10; }
       if (part.edges !== false) node.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, part.edgeAngle ?? 28), edgeMaterial));
     }
     node.name = part.id;
@@ -148,7 +178,12 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     point.position.set(...light.at);
     scene.add(point);
   }
-  const box = new THREE.Box3().setFromObject(scene);
+  if (spec.env) {
+    scene.environment = studioEnvironment(renderer, theme);
+    scene.environmentIntensity = spec.env.intensity ?? 1;
+  }
+  const box = new THREE.Box3();
+  scene.traverse((node) => { if ((node.isMesh || node.isLineSegments) && !node.userData.effect && !node.parent?.userData.effect) box.expandByObject(node, false); });
   const centre = box.getCenter(new THREE.Vector3());
   const radius = box.getSize(new THREE.Vector3()).length() / 2 || 100;
   key.position.copy(centre).add(new THREE.Vector3(-0.5, -0.9, 1.6).multiplyScalar(radius * 2));
@@ -193,7 +228,11 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const ground = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   const raycaster = new THREE.Raycaster();
   const handle = {
-    THREE, scene, camera, renderer, parts, screens, colors, theme,
+    THREE, scene, camera, renderer, parts, screens, shaders, colors, theme, RAMPS, rampColor,
+    /** Repaints a part's vertex colours: fn(x, y, z, i) in its own frame returns t (0..1 on `ramp`) or a Color. */
+    paint: (id, fn, ramp) => paintVertices(parts.get(id), fn, ramp),
+    /** Sets uTime on every library shader (freeze it under reduced motion by not calling this). */
+    time: (t) => { for (const s of shaders.values()) if (s.uniforms.uTime) s.uniforms.uTime.value = t; },
     render: () => renderer.render(scene, camera),
     /** Pointer event to a world point on the plane z = height. */
     toWorld(event, height = 0) {

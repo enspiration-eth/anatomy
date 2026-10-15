@@ -100,3 +100,84 @@ test("validates screens, colours, scale and lights", () => {
   assert.match(problems, /scale must be/);
   assert.match(problems, /each light needs/);
 });
+
+// ---- expressive looks: textures, shaders, vertex colours, materials, env, instancing
+
+import { TEXTURE_KINDS, SHADER_NAMES, RAMP_NAMES } from "../kit/three-scene.mjs";
+const looks = readFileSync(new URL("../kit/three-looks.js", import.meta.url), "utf8");
+const problemsOf = (extra, spec = {}) => validateScene({ ...base([...boxes(40), ...extra]), ...spec }).join("\n");
+
+test("every texture, shader and ramp the validator accepts is in the looks library", () => {
+  for (const kind of Object.keys(TEXTURE_KINDS)) assert.match(looks, new RegExp(`\\n  ${kind}\\(\\{`), `texture ${kind}`);
+  for (const name of Object.keys(SHADER_NAMES)) assert.match(looks, new RegExp(`\\n  ${name}\\(\\{`), `shader ${name}`);
+  for (const ramp of RAMP_NAMES) assert.match(looks, new RegExp(`\\n  ${ramp}: \\[\\[`), `ramp ${ramp}`);
+  for (const name of Object.keys(SHADER_NAMES)) for (const u of SHADER_NAMES[name].uniforms) assert.ok(looks.includes(u), `${name} uniform ${u}`);
+});
+
+test("the looks library is inlined with the runtime as one module", () => {
+  const source = threeModule({ spec: base(boxes(40)), theme: "dark" });
+  assert.equal((source.match(/^import \* as THREE from "three";$/gm) ?? []).length, 1);
+  assert.doesNotMatch(source, /from "\.\/three-looks\.js"/);
+  assert.match(source, /function studioEnvironment/);
+});
+
+test("validates textures", () => {
+  assert.equal(problemsOf([{ id: "t", kind: "box", size: [4, 4, 4], texture: { kind: "brushed", project: "box", tile: 30 } }]), "");
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [4, 4, 4], texture: { kind: "marble" } }]), /texture.kind must be one of/);
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [4, 4, 4], texture: { kind: "pcb", pitch: 3 } }]), /pcb does not take "pitch"/);
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [4, 4, 4], texture: { kind: "dial", count: 50, every: 5 } }]), /dial texture belongs on a disc or plane/);
+  assert.match(problemsOf([{ id: "t", kind: "disc", r: 9, texture: { kind: "dial", count: 50, every: 7 } }]), /multiple of every/);
+  assert.match(problemsOf([{ id: "t", kind: "disc", r: 9, texture: { kind: "dial", repeat: [2, 2] } }]), /picture, not a pattern/);
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [4, 4, 4], texture: { kind: "wood", project: "top", repeat: [1, 1] } }]), /not both/);
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [4, 4, 4], texture: { kind: "wood", project: "side" } }]), /project must be/);
+});
+
+test("validates shaders and treats plumes and glows as effects, not solids", () => {
+  const plume = { id: "jet", kind: "cylinder", r: 9, h: 40, open: true, shader: { name: "plume", uniforms: { uLevel: 0, uDiamonds: 4 } } };
+  assert.equal(problemsOf([plume]), "");
+  assert.equal(solidCount(base([...boxes(40), plume, { id: "g", kind: "sphere", r: 3, shader: { name: "glow" } }])), 40);
+  assert.match(validateScene(base([...boxes(39), plume])).join(), /found 39/);
+  assert.match(problemsOf([{ ...plume, open: undefined }]), /plume needs an open cylinder/);
+  assert.match(problemsOf([{ ...plume, shader: { name: "fire" } }]), /shader.name must be one of/);
+  assert.match(problemsOf([{ ...plume, shader: { name: "plume", uniforms: { uHeat: 1 } } }]), /no uniform uHeat/);
+  assert.match(problemsOf([{ ...plume, shader: { name: "plume", uniforms: { uLevel: "hot" } } }]), /must be a number/);
+  assert.match(problemsOf([{ id: "s", kind: "plane", size: [4, 3], shader: { name: "crt" } }]), /give the plane screen/);
+  assert.equal(problemsOf([{ id: "s", kind: "plane", size: [4, 3], screen: [64, 48], shader: { name: "crt", uniforms: { uTint: [1, 1, 1] } } }]), "");
+  assert.match(problemsOf([{ id: "w", kind: "box", size: [4, 4, 4], shader: { name: "ripple" } }]), /ripple shader goes on a plane/);
+  assert.match(problemsOf([{ ...plume, texture: { kind: "paper" } }]), /the shader is the look/);
+  assert.match(problemsOf([{ id: "g", kind: "box", size: [4, 4, 4], shader: { name: "glow" } }]), /glow is a sphere/);
+});
+
+test("validates vertex colours", () => {
+  const lathe = { id: "bell", kind: "lathe", profile: [[4, 0], [8, 10]] };
+  assert.equal(problemsOf([{ ...lathe, colors: { ramp: "heat", axis: "r", range: [4, 8] } }]), "");
+  assert.equal(problemsOf([{ ...lathe, colors: { stops: [[0, "#000000"], [1, "#ffffff"]], range: [0, 10] } }]), "");
+  assert.match(problemsOf([{ ...lathe, colors: { ramp: "rainbow", range: [0, 1] } }]), /colors.ramp must be one of/);
+  assert.match(problemsOf([{ ...lathe, colors: { range: [0, 1] } }]), /exactly one of ramp or stops/);
+  assert.match(problemsOf([{ ...lathe, colors: { stops: [[0.5, "#000000"], [0.2, "#ffffff"]], range: [0, 1] } }]), /t rising/);
+  assert.match(problemsOf([{ ...lathe, colors: { ramp: "heat", range: [5, 5] } }]), /high > low/);
+  assert.match(problemsOf([{ ...lathe, colors: { ramp: "heat", axis: "w", range: [0, 1] } }]), /axis must be/);
+  assert.match(problemsOf([{ id: "b", kind: "box", size: [4, 4, 4], colors: { ramp: "heat", range: [0, 4] } }]), /too few for a gradient/);
+});
+
+test("validates physical materials and asks reflective parts for an environment", () => {
+  const glass = { id: "lens", kind: "sphere", r: 4, glass: true, material: { transmission: 0.9, ior: 1.5, thickness: 2 } };
+  assert.equal(problemsOf([glass], { env: true }), "");
+  assert.match(problemsOf([glass]), /set env/);
+  assert.match(problemsOf([{ id: "m", kind: "sphere", r: 4, metal: 0.9 }]), /set env/);
+  assert.match(problemsOf([{ ...glass, material: { transmission: 1.2 } }], { env: true }), /transmission must be in \[0, 1\]/);
+  assert.match(problemsOf([{ ...glass, material: { ior: 4 } }], { env: true }), /ior must be in/);
+  assert.match(problemsOf([{ ...glass, material: { shine: 1 } }], { env: true }), /no field shine/);
+  assert.match(problemsOf([{ ...glass, opacity: 0.5 }], { env: true }), /not also faded/);
+  assert.match(problemsOf([{ ...glass, material: { transmission: 1, metal: 0.8 } }], { env: true }), /metal does not transmit/);
+  assert.match(problemsOf([], { env: { intensity: 9 } }), /env must be/);
+});
+
+test("validates instances and counts them once", () => {
+  const vents = { id: "vents", kind: "instances", shape: "box", size: [1, 4, 1], items: [[0, 0, 0], [0, 0, 2], [0, 0, 4, 15]] };
+  assert.equal(problemsOf([vents]), "");
+  assert.equal(solidCount(base([...boxes(40), vents])), 41);
+  assert.match(problemsOf([{ ...vents, items: [[0, 0, 0]] }]), /at least two/);
+  assert.match(problemsOf([{ ...vents, shape: "cone" }]), /shape must be box, cylinder or sphere/);
+  assert.match(problemsOf([{ ...vents, itemColors: ["red"] }]), /itemColors/);
+});

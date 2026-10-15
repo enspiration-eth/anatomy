@@ -14,50 +14,11 @@ const RANGE = M_RANGE, optics = ${JSON.stringify(optics)}, XS = ${XS}, LAMP = ${
 const IN = ${JSON.stringify(IN)}, PAPER = ${JSON.stringify(PAPER)};
 const { THREE } = fig;
 const dark = fig.theme === "dark";
-const FIELD = \`
-uniform float uTime, uK, uDecay, uHalf, uAmp, uBeat;
-uniform vec2 uSource;
-float wave(vec2 p, vec2 s) {
-  float r = max(distance(p, s), 0.6);
-  return cos(uK * r - 6.2831853 * uBeat * uTime) * exp(-uDecay * r) * inversesqrt(max(r * uK / 6.2831853, 0.35));
-}
-float field(vec2 p) { return uAmp * (wave(p, uSource + vec2(0.0, -uHalf)) + wave(p, uSource + vec2(0.0, uHalf))); }
-\`;
-const uniforms = { uTime: { value: 0 }, uK: { value: 1 }, uDecay: { value: 0 }, uHalf: { value: START_SPACING / 2 }, uAmp: { value: 1 }, uBeat: { value: M_BEAT }, uSource: { value: new THREE.Vector2(XS, 0) },
-  uLift: { value: optics.magnification }, uLamp: { value: new THREE.Vector2(LAMP[0], LAMP[1]) }, uInside: { value: new THREE.Vector2(IN.w / 2 - 8, IN.d / 2 - 8) },
-  uFocus: { value: 0.5 }, uDark: { value: dark ? 1 : 0 } };
-const vertex = \`varying vec2 vWorld; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xy; gl_Position = projectionMatrix * viewMatrix * w; }\`;
-const water = new THREE.ShaderMaterial({ uniforms, vertexShader: vertex, transparent: true, depthWrite: false, fragmentShader: FIELD + \`
-uniform float uDark; varying vec2 vWorld;
-void main() {
-  float e = 0.35;
-  vec2 g = vec2(field(vWorld + vec2(e, 0.0)) - field(vWorld - vec2(e, 0.0)), field(vWorld + vec2(0.0, e)) - field(vWorld - vec2(0.0, e))) / (2.0 * e);
-  vec3 n = normalize(vec3(-g * 9.0, 1.0));
-  float spec = pow(max(dot(n, normalize(vec3(-0.25, -0.35, 1.0))), 0.0), 60.0);
-  float sky = 0.5 + 0.5 * n.x - 0.3 * n.y;
-  vec3 deep = mix(vec3(0.62, 0.72, 0.72), vec3(0.08, 0.12, 0.13), uDark);
-  vec3 lit = mix(vec3(0.92, 0.97, 0.97), vec3(0.36, 0.46, 0.48), uDark);
-  vec3 c = mix(deep, lit, clamp(sky, 0.0, 1.0)) + spec * 0.8;
-  gl_FragColor = vec4(c, mix(0.55, 0.8, uDark));
-}\` });
-const paper = new THREE.ShaderMaterial({ uniforms, vertexShader: vertex, fragmentShader: FIELD + \`
-uniform float uLift, uFocus, uDark; uniform vec2 uLamp, uInside; varying vec2 vWorld;
-void main() {
-  vec2 p = uLamp + (vWorld - uLamp) / uLift;
-  vec2 edge = uInside - abs(p);
-  float inside = smoothstep(0.0, 6.0, min(edge.x, edge.y));
-  // A crest is a weak lens: brightness follows the surface's curvature (the field's negative Laplacian).
-  float e = 0.5, c = field(p);
-  float lap = (field(p + vec2(e, 0.0)) + field(p - vec2(e, 0.0)) + field(p + vec2(0.0, e)) + field(p - vec2(0.0, e)) - 4.0 * c) / (e * e);
-  float light = 1.0 - clamp(uFocus * lap, -0.9, 1.6) * 0.55;
-  float pool = 1.0 - smoothstep(60.0, 260.0, length(vWorld - uLamp)) * 0.35;
-  vec3 paperTone = mix(vec3(0.96, 0.95, 0.91), vec3(0.42, 0.42, 0.40), uDark);
-  vec3 shade = paperTone * mix(0.72, 1.0, 1.0 - uDark * 0.2);
-  vec3 col = mix(shade * 0.78, paperTone * light, inside) * pool;
-  gl_FragColor = vec4(col, 1.0);
-}\` });
-fig.parts.get("water").material = water;
-fig.parts.get("paper").material = paper;
+// Both library shaders (ripple on the water, caustics on the paper) compute the same two-source field;
+// one set of numbers drives both, so the paper always shows the light the water above it would throw.
+const water = fig.shaders.get("water"), paper = fig.shaders.get("paper");
+const set = (key, value) => { water.uniforms[key] && (water.uniforms[key].value = value); paper.uniforms[key] && (paper.uniforms[key].value = value); };
+const uniforms = { uK: { value: 1 } };
 const dippers = ${JSON.stringify(DIPPERS)}.map((id) => fig.parts.get(id));
 const bar = fig.parts.get("bar"), barZ = bar.position.z, eccentric = fig.parts.get("eccentric");
 const knob = fig.parts.get("knob"), needle = fig.parts.get("meter-needle");
@@ -67,10 +28,11 @@ const stateNow = () => stateOf(f, s, optics);
 function draw(time) {
   const st = stateNow();
   uniforms.uK.value = (2 * Math.PI) / st.lambdaMm;
-  uniforms.uDecay.value = st.decay;
-  uniforms.uHalf.value = s / 2;
-  uniforms.uFocus.value = st.focus / (uniforms.uK.value * uniforms.uK.value * 1);
-  uniforms.uTime.value = still.matches ? 0 : time;
+  set("uK", uniforms.uK.value);
+  set("uDecay", st.decay);
+  set("uHalf", s / 2);
+  set("uFocus", st.focus / (uniforms.uK.value * uniforms.uK.value));
+  fig.time(still.matches ? 0 : time);
   dippers[0].position.y = -s / 2; dippers[1].position.y = s / 2;
   // The bar dips at f, seen under a strobe BEAT Hz slower: it seems to bob at BEAT Hz.
   bar.position.z = barZ + (still.matches ? 0 : Math.sin(2 * Math.PI * M_BEAT * time) * 0.5);

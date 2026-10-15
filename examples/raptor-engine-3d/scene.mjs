@@ -27,7 +27,7 @@ export const ASSEMBLIES = {
 const s = (v) => Z_EXIT + v; // height above the nozzle exit
 const METAL = { metal: 0.45, rough: 0.4 };
 const COPPER = { color: "#b5764a", metal: 0.55, rough: 0.35 };
-const STEEL = { color: "#9aa0a6", metal: 0.5, rough: 0.35 };
+const STEEL = { color: "#ffffff", metal: 0.6, rough: 0.35, texture: { kind: "brushed", project: "box", tile: 40 } };
 const DARK = { color: "#3d4045", metal: 0.4, rough: 0.5 };
 for (const id of Object.keys(ASSEMBLIES)) add({ id, kind: "group", at: [0, 0, 0] });
 const boltCircle = (parent, id, z, r, n, size = 1.4) => {
@@ -115,6 +115,9 @@ for (const [i, [a, z, r]] of [[80, 180, 29.5], [140, 210, 19.5], [100, 150, 25]]
 for (const [i, a] of [20, 160, 280].entries())
   add({ id: `purge-${i}`, kind: "tube", points: [L(a, 26, 170), L(a, 27.5, 150), L(a, 26, 130)], r: 1.2, color: "#7d838a", edges: false, parent: "plumbing" });
 add({ id: "plume", kind: "group", at: [0, 0, s(0)] });
+// The plume is a library shader on an open cone from the exit (uv.y = 1) down to the deck; an effect, not a solid.
+export const PLUME_H = Z_EXIT - 6;
+add({ id: "plume-jet", kind: "cylinder", open: true, r: 120, r2: 64, h: PLUME_H, segments: 64, at: [0, 0, -PLUME_H], edges: false, parent: "plume", shader: { name: "plume", uniforms: { uDiamonds: 4, uSpeed: 6 } } });
 
 export const scene = {
   fig: "Fig 1",
@@ -126,5 +129,6 @@ export const scene = {
   height: 680,
   pad: 0.02,
   camera: { azimuth: 38, elevation: 27 },
+  env: { intensity: 0.7 },
   parts,
 };

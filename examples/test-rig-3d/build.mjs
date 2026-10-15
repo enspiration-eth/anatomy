@@ -28,6 +28,26 @@ function rebuildSprings(cx) {
     s.mesh.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, SPRING.wire, 8, false);
   }
 }
+// Strain view (S): vertex colours on the stress ramp. Each spring is one colour, its force over the most any
+// spring carries; the button is coloured by a sketch of its shear strain, largest at the base and at the ends,
+// where the pad holds it while the top leans. A picture of where the load goes, not a finite-element result.
+let strainOn = false, strain = { at: 0, rate: 0 };
+const base = new THREE.Color(), tmp = new THREE.Color(), out = new THREE.Color();
+const springBase = new THREE.Color(fig.colors.hi), buttonBase = new THREE.Color("#cfe3ff");
+const MOST_STRETCH = PULL_MOST * CARRY;
+function paintStrain(cx, l, p) {
+  const k = Math.max(0, Math.min(1, strain.at));
+  if (k < 0.002 && !strainOn) return;
+  for (const s of springs) {
+    const t = 0.15 + 0.85 * Math.min(1, Math.abs(cx) / MOST_STRETCH);
+    fig.paint(s.mesh.name, () => out.copy(springBase).lerp(fig.rampColor("stress", t, tmp), k), "stress");
+  }
+  const shear = Math.abs(l) / GIVE, squeeze = 0.2 * p;
+  fig.paint("button", (x, y, z) => {
+    const low = 1 - Math.min(1, Math.max(0, z / BUTTON_H)), end = Math.min(1, Math.abs(x) / HALF[0]);
+    return out.copy(buttonBase).lerp(fig.rampColor("stress", squeeze + shear * (0.35 + 0.45 * low + 0.2 * end), tmp), k);
+  }, "stress");
+}
 let lastCx = null;
 function draw() {
   const p = Math.max(0, Math.min(1, press.at));
@@ -36,6 +56,7 @@ function draw() {
   const swell = 1 + SWELL * p;
   carriage.position.x = cx;
   if (lastCx === null || Math.abs(cx - lastCx) > 0.01) { rebuildSprings(cx); lastCx = cx; }
+  paintStrain(cx, l, p);
   const squash = 1 - 0.12 * p;
   // Lean is a shear: the top moves by l, the base stays on the pad.
   button.matrix.set(swell, 0, l / (BUTTON_H * squash), 0, 0, swell, 0, 0, 0, 0, squash, BUTTON_Z, 0, 0, 0, 1);
@@ -57,8 +78,9 @@ const runner = loop(stage, (dt) => {
   }
   const a = spring(press, pressed ? 1 : 0, dt, 540, 40);
   const b = spring(pull, pressed ? pullTarget : 0, dt, 320, 22);
+  const c = spring(strain, strainOn ? 1 : 0, dt, 200, 28);
   draw();
-  return a || b || tour.touring;
+  return a || b || c || tour.touring;
 });
 const act = (nextPressed, nextPull) => { tour.touch(); pressed = nextPressed; pullTarget = clamp(nextPull, -PULL_MOST, PULL_MOST); runner.kick(); };
 let dragFrom = null;
@@ -70,7 +92,8 @@ stage.addEventListener("pointermove", (event) => {
 });
 addEventListener("pointerup", () => { if (dragFrom !== null) { dragFrom = null; act(false, 0); } });
 stage.addEventListener("keydown", (event) => {
-  if (event.key === " " || event.key === "Enter") act(!pressed, 0);
+  if (event.key === "s" || event.key === "S") { strainOn = !strainOn; tour.touch(); runner.kick(); }
+  else if (event.key === " " || event.key === "Enter") act(!pressed, 0);
   else if (event.key === "ArrowRight") act(true, pullTarget + 20);
   else if (event.key === "ArrowLeft") act(true, pullTarget - 20);
   else if (event.key === "Escape") act(false, 0);
@@ -89,6 +112,6 @@ writeThreeFigure({
     { mark: "lit", label: "Finger probe: presses the button and pulls it sideways" },
     { mark: "raised", label: "Glass button on a spring-mounted carriage, read by a dial gauge" },
   ],
-  caption: `A 120 × 32 glass button on a test rig, as a three.js scene: a carriage on two guide rods held by four springs, a finger probe on a gantry behind it, and a dial gauge riding on the carriage whose feeler reads how far the button's top leans. Pressed, the button swells ${SWELL * 100}% across; pulled, the carriage takes ${CARRY * 100}% of the pull against its springs and the rubber top leans the rest, up to ${GIVE} px. Pulled 80 px it leans ${Math.abs(pulled).toFixed(1)} px; one turn of the needle is 20 px.`,
-  stage: { role: "slider", label: "Test rig: space presses the button, left and right arrows pull it", attrs: { "aria-valuemin": 0, "aria-valuemax": GIVE, "aria-valuenow": 0 } },
+  caption: `A 120 × 32 glass button on a test rig, as a three.js scene: a carriage on two guide rods held by four springs, a finger probe on a gantry behind it, and a dial gauge riding on the carriage whose feeler reads how far the button's top leans. Pressed, the button swells ${SWELL * 100}% across; pulled, the carriage takes ${CARRY * 100}% of the pull against its springs and the rubber top leans the rest, up to ${GIVE} px. Pulled 80 px it leans ${Math.abs(pulled).toFixed(1)} px; one turn of the needle is 20 px. Press S for the strain view: vertex colours on a stress ramp, each spring by the force it carries and the button by where its shear strain gathers (at the base, held by the pad, and at the ends).`,
+  stage: { role: "slider", label: "Test rig: space presses the button, left and right arrows pull it, S shows strain", attrs: { "aria-valuemin": 0, "aria-valuemax": GIVE, "aria-valuenow": 0 } },
 });

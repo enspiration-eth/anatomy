@@ -253,3 +253,19 @@ uniform (`g.uniforms.uA.value.copy(colour)`) rather than reassigning it: the sha
   bands must slow down, the Cherenkov glow must fade, and the steam must thin out.
 - Reduced motion: `fig.time` is not called, so the bands and puffs freeze where they are, and the levels still
   show the state.
+
+### Mechanisms: meshing teeth, jewels, blued steel (the watch, Fig 8)
+
+- Gears are `extrude` outlines (trapezoid teeth from `N` and module `m`) with crossings cut as `holes`. Place
+  each arbor at exactly wheel pitch radius + pinion pitch radius, and give a wheel and the pinion it drives the
+  same module. The watch test checks both.
+- Phase the teeth so they interleave. Given the next arbor's angle θb, the line of centres φ and the counts Nw
+  and Np, set θa = φ − (Np/Nw)(θb − φ − π − π/Np). Drive the train from the escape wheel backwards, so its
+  stepped motion (half a tooth per beat) reaches every wheel. Unphased teeth visibly pass through each other in
+  a close-up.
+- Jewels: `glass: true` with `material: { transmission ≈ 0.55, ior: 1.76, thickness }` and a deep red. Below
+  thickness 3 at this scale they read as plastic, and above transmission 0.8 they go pink.
+- Blued steel: `#24357a`, metal 0.85, `material: { clearcoat: 0.6, iridescence: 0.4 }`. The iridescence is the
+  thin oxide film that gives blued screws their colour.
+- Brushed rhodium bridges: set the texture's `color` (`#d4d8de`). The theme-aware default is a dark grey meant
+  for machinery, and it makes a movement look like cast iron.

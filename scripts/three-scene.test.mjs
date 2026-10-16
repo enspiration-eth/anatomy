@@ -256,3 +256,22 @@ test("the reactor figure: valid hero, published reference numbers, rods lower po
   assert.ok(R.powerFor(1) <= 0.02 + 1e-9);
   assert.ok(R.SOURCES.every(([, , url]) => url.startsWith("https://")));
 });
+
+test("the watch figure: valid hero, exact train ratios, meshing centre distances, reserve in range", async () => {
+  const M = await import("../examples/watch-3d/scene.mjs");
+  assert.deepEqual(validateScene(M.scene), []);
+  assert.ok(solidCount(M.scene) >= 80);
+  const r = M.trainRates();
+  assert.ok(Math.abs(r.centre * 3600 - M.FACTS.centreRevH) < 1e-9, "centre wheel once an hour");
+  assert.ok(Math.abs(r.fourth * 60 - M.FACTS.fourthRevMin) < 1e-9, "fourth wheel once a minute");
+  assert.equal(r.hz, 4);
+  const pitch = (N, m) => (N * m) / 2, d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  for (const [a, b] of [["barrel", "centre"], ["centre", "third"], ["third", "fourth"], ["fourth", "escape"]]) {
+    const wa = M.W[a], wb = M.W[b];
+    assert.ok(Math.abs(d(wa.at, wb.at) - pitch(wa.N, wa.m) - pitch(wb.pN, wb.pm)) < 1e-6, `${a} meshes ${b}`);
+    assert.equal(wa.m, wb.pm, `${a} wheel and ${b} pinion share a module`);
+  }
+  const h = M.reserveHours();
+  assert.ok(h >= M.FACTS.reserveH[0] && h <= M.FACTS.reserveH[1], `reserve ${h} h`);
+  for (const p of [M.W.barrel, M.BAL]) assert.ok(Math.hypot(...p.at) + (p === M.BAL ? p.r + 5 : pitch(p.N, p.m) + p.m) < 128, "inside the plate");
+});

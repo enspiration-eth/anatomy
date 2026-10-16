@@ -70,7 +70,7 @@ jobs:
       - name: three.js ports
         run: |
           mkdir -p shots
-          for name in dial-indicator desk-computer arcade-cabinet raptor-engine ripple-tank test-rig spot-plate turning-dial neuralink heart reactor; do
+          for name in dial-indicator desk-computer arcade-cabinet raptor-engine ripple-tank test-rig spot-plate turning-dial neuralink heart reactor watch; do
             node examples/$name-3d/build.mjs --check
             node examples/$name-3d/build.mjs
             node examples/$name-3d/build.mjs --light

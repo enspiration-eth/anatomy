@@ -2,6 +2,9 @@
 
 All notable changes to Anatomy are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); entries from before the first release are dated.
 
+## AT-AT, fifth take: the underside
+- Real geometry under the belly, after the studio miniature: hip axles with bolted collars, shield-shaped drive housings with ribbed barrels running in and down, a keel with a boss and grille, panelled belly plates per module, dark bands at the module gaps, greebled lower edges, pipe runs, a belly hatch, and the notched front-module belly. A light bounced off the snow lifts the belly. A Low view (and drag or arrow keys below the horizon, kept above the snow) looks up at it.
+
 ## AT-AT, fourth take: three body modules
 - The body is now three separate modules (front, centre, rear), each with its own lofted shell, a lining, walls leaning in toward the roof, and dark seams between them. Measured proportions are in the reference notes.
 

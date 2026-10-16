@@ -30,8 +30,10 @@ const P = (id) => fig.parts.get(id), dark = fig.theme === "dark";
   const rim = new THREE.DirectionalLight(dark ? "#d6e2f5" : "#e8eef8", dark ? 2.0 : 1.5); rim.position.set(-900, 700, 520); fig.scene.add(rim);
   // an endless snow plain round the live heightfield, so its edges never show
   const plainMat = new THREE.MeshStandardMaterial({ color: dark ? "#eef2f8" : "#eef2f7", roughness: 0.95 });
-  const plainMesh = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), plainMat); plainMesh.position.z = -16; plainMesh.receiveShadow = true; fig.scene.add(plainMesh);
+  const plainMesh = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), plainMat); plainMesh.position.z = -16; plainMesh.name = "snowplain"; plainMesh.receiveShadow = true; fig.scene.add(plainMesh);
   const fill = new THREE.DirectionalLight("#9fb3cc", 0.5); fill.position.set(400, -800, 200); fig.scene.add(fill);
+  // light bounced up off the snow onto the belly
+  const bounce = new THREE.DirectionalLight("#e8eef6", dark ? 0.5 : 0.32); bounce.position.set(150, 250, -700); fig.scene.add(bounce);
 }
 const root = stage.closest(".iso-plate")?.parentElement ?? document.body;
 const $ = (q) => root.querySelector(q), status = $("[data-live]");
@@ -104,7 +106,9 @@ function snowfall(dt) {
 }
 
 // ---------- camera
-function applyView() { fig.view(az, el, zoom, target); const d = fig.camera.position.distanceTo(target); if (fig.scene.fog) { fig.scene.fog.near = d * 1.1; fig.scene.fog.far = d * 5; } }
+// a camera looking up must stay above the snow: lift the elevation until it does
+function keepAboveSnow() { const p = fig.camera.position, d = p.distanceTo(target); if (p.z < 30 && d > 0) { el = Math.asin(Math.max(-1, Math.min(1, (30 - target.z) / d))) * 180 / Math.PI; fig.view(az, el, zoom, target); } }
+function applyView() { fig.view(az, el, zoom, target); keepAboveSnow(); const d = fig.camera.position.distanceTo(target); if (fig.scene.fog) { fig.scene.fog.near = d * 1.1; fig.scene.fog.far = d * 5; } }
 // ---------- section
 function applySlice() {
   fig.setSection(sliceOn ? sliceY : -2000);
@@ -199,7 +203,7 @@ let down = null;
 stage.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, az, el, moved: false }; stage.setPointerCapture(e.pointerId); tour.touch(); });
 stage.addEventListener("pointermove", (e) => {
   if (down) { const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 4) down.moved = true;
-    if (down.moved) { az = down.az - dx * 0.35; el = clamp(down.el + dy * 0.25, 2, 80); applyView(); runner.kick(); } return; }
+    if (down.moved) { az = down.az - dx * 0.35; el = clamp(down.el + dy * 0.25, -30, 80); applyView(); runner.kick(); } return; }
   const d = pick(e);
   if ((d && d.id) !== (hover && hover.id)) { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = d; if (d) highlight(d.id, true); stage.style.cursor = d ? "pointer" : "grab"; runner.kick(); }
 });
@@ -209,7 +213,7 @@ stage.addEventListener("pointerup", (e) => {
 });
 stage.addEventListener("pointerleave", () => { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = null; runner.kick(); });
 stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 1.2, 8); applyView(); runner.kick(); }, { passive: false });
-const setView = (k) => { target.set(...TARGET0); if (k === "side") { az = 0; el = 3; zoom = 2.4; } else if (k === "front") { az = -90; el = 5; zoom = 2.5; } else { az = 36; el = 2; zoom = 2.9; } applyView(); };
+const setView = (k) => { target.set(...TARGET0); if (k === "side") { az = 0; el = 3; zoom = 2.4; } else if (k === "front") { az = -90; el = 5; zoom = 2.5; } else if (k === "low") { az = 24; el = -18; zoom = 4.6; target.set(20, 0, 330); } else { az = 36; el = 2; zoom = 2.9; } applyView(); };
 viewBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); setView(b.dataset.view); runner.kick(); }));
 deptBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); const d = DEPTS.find((q) => q.id === b.dataset.dept); if (open && open.id === d.id) closeCard(); else openCard(d); }));
 sliceBtn?.addEventListener("click", () => { tour.touch(); sliceOn = !sliceOn; applySlice(); runner.kick(); });
@@ -220,7 +224,7 @@ stage.addEventListener("keydown", (e) => {
   if (e.key === "[" || e.key === "]") { sliceOn = true; sliceY = clamp(sliceY + (e.key === "]" ? 5 : -5), -70, 70); applySlice(); }
   else if (e.key === "s" || e.key === "S") { sliceOn = !sliceOn; applySlice(); }
   else if (e.key === "ArrowLeft" || e.key === "ArrowRight") { az += e.key === "ArrowRight" ? 10 : -10; applyView(); }
-  else if (e.key === "ArrowUp" || e.key === "ArrowDown") { el = clamp(el + (e.key === "ArrowUp" ? 5 : -5), 2, 80); applyView(); }
+  else if (e.key === "ArrowUp" || e.key === "ArrowDown") { el = clamp(el + (e.key === "ArrowUp" ? 5 : -5), -30, 80); applyView(); }
   else if (e.key === "v" || e.key === "V") setView("side");
   else if (e.key === " ") walkBtn?.click();
   else if (/^[1-7]$/.test(e.key)) { openCard(DEPTS[Number(e.key) - 1]); }
@@ -284,7 +288,7 @@ writeThreeFigure({
     { mark: "edge", label: "Footprints pressed into the snow, drifting back as it walks" },
   ],
   caption: `An all-terrain armoured transport walking in place through snow. It is fiction, built here as an original procedural model after the canon design [1][2]. It walks one foot at a time: each leg's thigh, knee and ankle angles are solved from where its foot must be, so a planted foot stays still while the snow slides back beneath it. Each landing presses a print with a raised rim into the snow, and older prints fill in. Turn on the slice and move it through the body from the side to see what lies inside: the cockpit in the head, the neck corridor, the troop bay, the speeder bike bay, the generator and the leg drives. Click any of them for a card explaining what it does. Canon gives a crew of ${FACTS.crew} in the cockpit, about ${FACTS.troops} troops and ${FACTS.bikes} speeder bikes [1]; the deck layout shown is illustrative.`,
-  stage: { role: "group", label: "Walker in snow. Drag to orbit, scroll to zoom, arrow keys turn the camera, V side view. S toggles the slice, [ and ] move it. Keys 1 to 7 open a department card, Escape closes it. Space pauses the walk." },
-  after: `<div class="at-ctl" role="group" aria-label="View and slice"><button type="button" data-walk aria-pressed="true">Space Pause walk</button><span class="at-gap"></span><button type="button" data-view="iso">Iso</button><button type="button" data-view="side">V Side</button><button type="button" data-view="front">Front</button><span class="at-gap"></span><button type="button" data-slice aria-pressed="false">S Slice off</button><label>Depth <input type="range" min="-70" max="70" step="1" value="-20" data-depth aria-label="Slice depth across the body, from the near side"></label><span data-depth-out>off</span></div>
+  stage: { role: "group", label: "Walker in snow. Drag to orbit, scroll to zoom, arrow keys turn the camera, V side view, Low looks up at the belly. S toggles the slice, [ and ] move it. Keys 1 to 7 open a department card, Escape closes it. Space pauses the walk." },
+  after: `<div class="at-ctl" role="group" aria-label="View and slice"><button type="button" data-walk aria-pressed="true">Space Pause walk</button><span class="at-gap"></span><button type="button" data-view="iso">Iso</button><button type="button" data-view="side">V Side</button><button type="button" data-view="front">Front</button><button type="button" data-view="low">Low</button><span class="at-gap"></span><button type="button" data-slice aria-pressed="false">S Slice off</button><label>Depth <input type="range" min="-70" max="70" step="1" value="-20" data-depth aria-label="Slice depth across the body, from the near side"></label><span data-depth-out>off</span></div>
 <div class="at-ctl" role="group" aria-label="Departments">${DEPTS.map((d, i) => `<button type="button" data-dept="${d.id}" aria-pressed="false">${i + 1} ${esc(d.name)}</button>`).join("")}</div><span class="at-live" aria-live="polite" data-live></span>${notes}`,
 });

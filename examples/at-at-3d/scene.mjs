@@ -74,8 +74,8 @@ Object.entries(MODULES).forEach(([name, m], k) => {
   B({ id: `${name}-lining`, kind: "loft", sections: m.st.map(([x, p], i) => [i === 0 ? x + 6 : i === last ? x - 6 : x, inset(p, 6)]), inside: true, color: "#7d848c", rough: 0.7 });
 });
 // seams: recessed dark collars in the gaps between modules
-B({ id: "seam-front", kind: "box", size: [7, 90, 100], r: 1, at: [84.5, 0, 338], color: "#2d3137", rough: 0.8 });
-B({ id: "seam-rear", kind: "box", size: [7, 104, 140], r: 1, at: [-45.5, 0, 338], color: "#2d3137", rough: 0.8 });
+B({ id: "seam-front", kind: "box", size: [7, 90, 100], r: 1, at: [84.5, 0, 331], color: "#2d3137", rough: 0.8 });
+B({ id: "seam-rear", kind: "box", size: [7, 104, 140], r: 1, at: [-45.5, 0, 331], color: "#2d3137", rough: 0.8 });
 
 // centre: a deck with a lip, hatch, vents and boxes; two big side plates, a troop door, a louvre at the front edge
 B({ id: "deck", kind: "extrude", plane: "xz", outline: [[-46, 488], [85, 488], [82, 496], [-43, 496]], depth: 100, bevel: 2, at: [0, -50, 0], ...hull(34) });
@@ -115,14 +115,82 @@ for (let k = 0; k < 7; k++) B({ id: `rear-rib-${k}`, kind: "box", size: [4, 4, 6
 for (let k = 0; k < 3; k++) B({ id: `rear-greeble-${k}`, kind: "box", size: [18, 16 + k * 6, 5], r: 1.5, at: [-127, -24 + k * 24, 455], rot: [0, -48, 0], color: k % 2 ? DARK : GREY_D, metal: 0.4 });
 B({ id: "rear-snow", kind: "box", size: [52, 84, 2.2], r: 1, at: [-77, 0, 484], ...snow({}) });
 B({ id: "front-snow", kind: "box", size: [30, 74, 2.2], r: 1, at: [104, 0, 446], ...snow({}) });
-// belly: hip drums across the body over each pair of legs, with rings and mounts
+// ---- belly (studio-miniature underside photos: kg 168-180, 203-218 looking up, 133-146 the lower front):
+// over each pair of legs a transverse hip axle with flanged collars, and under it a shield-shaped drive housing that
+// hangs below the belly and runs on, toward the middle, as a ribbed barrel; between the two barrels a round boss with a
+// grille on a keel; panelled belly plates on each module, dark gaps between modules, pipe runs along the lower edges.
+// a six-sided (y, z) section: half-width w, bottom zb, top zt, chamfer c (counter-clockwise, like the hull sections)
+const hex6 = (w, zb, zt, c) => [[-w + c, zb], [w - c, zb], [w, zb + c], [w, zt], [-w, zt], [-w, zb + c]];
+const BELLY = { front: [92, 146, 42], centre: [-38, 77, 50], rear: [-146, -53, 48] };
+const UNDER = "#b3b8be";
 for (const hx of [HIP_R, HIP_F]) {
-  const h = hx < 0 ? "r" : "f";
-  B({ id: `hip-drum-${h}`, kind: "cylinder", r: 24, h: 60, segments: 48, at: [hx, 30, HZ + 2], rot: [90, 0, 0], color: GREY_D, texture: ARMOR(62, 80), metal: 0.45 });
-  for (let k = 0; k < 5; k++) B({ id: `hip-ring-${h}-${k}`, kind: "cylinder", r: 25.5, h: 2.5, segments: 48, at: [hx, 22 - k * 11, HZ + 2], rot: [90, 0, 0], color: METAL, metal: 0.6 });
-  B({ id: `hip-mount-${h}`, kind: "box", size: [56, 60, 8], r: 2, at: [hx, 0, 327], color: "#8e949b", metal: 0.4 });
+  const h = hx < 0 ? "r" : "f", dir = hx < 0 ? 1 : -1;   // dir: toward the middle of the body
+  B({ id: `hip-axle-${h}`, kind: "cylinder", r: 13, h: 70, segments: 40, at: [hx, 35, HZ], rot: [90, 0, 0], color: METAL, metal: 0.65, rough: 0.35 });
+  for (const s of [-1, 1]) {
+    B({ id: `hip-collar-${h}-${s < 0 ? "s" : "p"}`, kind: "cylinder", r: 21, h: 7, segments: 48, at: [hx, s > 0 ? 35 : -28, HZ], rot: [90, 0, 0], color: GREY_D, texture: ARMOR(161 + s, 60), metal: 0.45 });
+    B({ id: `hip-bolts-${h}-${s < 0 ? "s" : "p"}`, kind: "instances", shape: "sphere", r: 1.8, segments: 8, items: Array.from({ length: 6 }, (_, i) => [hx + Math.cos(i * 1.047) * 15, s * 35.5, HZ + Math.sin(i * 1.047) * 15]), color: DARK, metal: 0.6 });
+  }
+  // the shield housing: broad and deep under the axle on the side toward the module end, narrowing toward the
+  // middle where the drive barrel leaves it
+  const xs = [hx - dir * 30, hx - dir * 16, hx + dir * 6, hx + dir * 20], shape = [hex6(22, 314, 333, 7), hex6(30, 293, 333, 11), hex6(28, 295, 333, 11), hex6(20, 304, 333, 8)];
+  const secs = xs.map((x, i) => [x, shape[i]]).sort((p, q) => p[0] - q[0]);
+  B({ id: `hip-shield-${h}`, kind: "loft", sections: secs, color: GREY_D, texture: ARMOR(170 + (dir > 0 ? 1 : 0), 70, 3), metal: 0.4, rough: 0.6 });
+  B({ id: `hip-shield-lip-${h}`, kind: "box", size: [24, 50, 3], r: 1.2, at: [hx - dir * 8, 0, 291.5], color: "#a9afb6", texture: ARMOR(172, 60, 2), metal: 0.4 });
+  for (const s of [-1, 1]) B({ id: `hip-shield-rib-${h}-${s < 0 ? "s" : "p"}`, kind: "box", size: [34, 3, 26], r: 1, at: [hx - dir * 10, s * 27, 302], rot: [s * -12, 0, 0], color: "#9ea4ab", metal: 0.4 });
+  B({ id: `hip-shadow-${h}`, kind: "box", size: [62, 66, 1], r: 0.4, at: [hx - dir * 6, 0, 332.5], color: "#2f3338", rough: 0.95 });
+  // the ribbed drive barrel, leaving the shield toward the middle of the body and tilting down
+  const th = dir * 112, ax = [Math.sin((th * Math.PI) / 180), 0, Math.cos((th * Math.PI) / 180)], P = (t, z0 = 312) => [hx + dir * 10 + ax[0] * t, 0, z0 + ax[2] * t];
+  B({ id: `hip-barrel-${h}`, kind: "cylinder", r: 18, h: 54, segments: 40, at: P(0), rot: [0, th, 0], color: "#a7adb4", texture: ARMOR(175, 60, 2), metal: 0.5, rough: 0.5 });
+  for (let k = 0; k < 4; k++) B({ id: `hip-barrel-ring-${h}-${k}`, kind: "cylinder", r: 18.6, h: 2.8, segments: 40, at: P(12 + k * 10), rot: [0, th, 0], color: METAL, metal: 0.65, rough: 0.35 });
+  B({ id: `hip-barrel-cap-${h}`, kind: "cylinder", r: 12, h: 5, segments: 32, at: P(54), rot: [0, th, 0], color: DARK, metal: 0.6 });
+  B({ id: `hip-barrel-plate-${h}`, kind: "box", size: [8, 1.2, 5], r: 0.5, at: P(30, 312 + 0), rot: [0, th - 90, 0], color: "#2e3237" });
+  // a grille on the belly on the outer side of the housing, between the axle collars
+  B({ id: `hip-grille-${h}`, kind: "box", size: [12, 26, 1.6], r: 0.7, at: [hx - dir * 38, 0, 331], color: "#3a3f45", rough: 0.8 });
+  for (let k = 0; k < 7; k++) B({ id: `hip-grille-slat-${h}-${k}`, kind: "box", size: [1.1, 24, 1.2], at: [hx - dir * 38 - 5 + k * 1.6, 0, 330.4], color: METAL, metal: 0.6 });
+  for (const s of [-1, 1]) B({ id: `hip-pipe-${h}-${s < 0 ? "s" : "p"}`, kind: "tube", points: [[hx + dir * 24, s * 24, 304], [hx + dir * 32, s * 28, 320], [hx + dir * 46, s * 30, 331]], r: 2.4, color: "#5b6168", metal: 0.5 });
 }
-for (const s of [-1, 1]) for (let k = 0; k < 5; k++) B({ id: `belly-rib-${s < 0 ? "s" : "p"}-${k}`, kind: "box", size: [6, 22, 4], at: [-20 + k * 20, s * 30, 330], color: DARK, metal: 0.4 });
+// keel between the barrels: a spine plate, a round boss with a grille, small tanks either side
+B({ id: "belly-keel", kind: "box", size: [64, 22, 6], r: 2, at: [12, 0, 327], color: "#9ea4ab", texture: ARMOR(180, 60, 3), metal: 0.45 });
+B({ id: "belly-boss", kind: "cylinder", r: 13, h: 7, segments: 40, at: [12, 0, 321], color: GREY_D, metal: 0.5 });
+B({ id: "belly-boss-cap", kind: "cylinder", r: 7, h: 2, segments: 32, at: [12, 0, 319.5], color: DARK, metal: 0.6 });
+for (let k = 0; k < 7; k++) B({ id: `belly-grille-${k}`, kind: "box", size: [1.4, 16, 2], at: [-10 + k * 2.6, 0, 324], color: "#33383e" });
+for (const s of [-1, 1]) B({ id: `belly-tank-${s < 0 ? "s" : "p"}`, kind: "cylinder", r: 5, h: 30, segments: 24, at: [36, s * 18, 326], rot: [0, 90, 0], color: METAL, metal: 0.6, rough: 0.4 });
+// belly plating per module: a slightly proud plate with recessed panel lines, a dark rim where the lower chamfer meets it
+for (const [m, [x0, x1, w]] of Object.entries(BELLY)) {
+  const z0 = m === "rear" ? 336 : 334;
+  B({ id: `belly-plate-${m}`, kind: "box", size: [x1 - x0, 2 * w - 12, 2], r: 0.9, at: [(x0 + x1) / 2, 0, z0 - 2], color: UNDER, texture: ARMOR(190 + x0, 90, 4), metal: 0.35, rough: 0.7 });
+  const n = Math.max(2, Math.round((x1 - x0) / 26));
+  for (let k = 1; k < n; k++) B({ id: `belly-line-${m}-${k}`, kind: "box", size: [1.6, 2 * w - 16, 0.8], at: [x0 + ((x1 - x0) * k) / n, 0, z0 - 2.6], color: "#4b5057" });
+  for (const s of [-1, 1]) {
+    B({ id: `belly-rim-${m}-${s < 0 ? "s" : "p"}`, kind: "box", size: [x1 - x0 + 2, 3, 2.6], r: 1, at: [(x0 + x1) / 2, s * (w - 5), z0 - 2.4], color: "#5e646b", metal: 0.4 });
+    // greebled lower edge band: small boxes and recessed panels on the lower chamfer
+    for (let k = 0; k < Math.floor((x1 - x0) / 22); k++) onSide(m, s, z0 + 1.5, 0.4, { id: `low-greeble-${m}-${s < 0 ? "s" : "p"}-${k}`, kind: "box", size: [8 + (k % 3) * 4, 2.4, 5 + (k % 2) * 3], r: 0.8, at: [x0 + 10 + k * 22], color: k % 3 ? GREY_D : DARK, metal: 0.4 });
+  }
+}
+// belly hatches: a hinged access hatch under the troop bay (with a loop handle) and a rear ventral hatch
+B({ id: "belly-hatch-frame", kind: "box", size: [40, 34, 2], r: 6, at: [52, 0, 330.4], color: "#7e858c", metal: 0.4 });
+B({ id: "belly-hatch-door", kind: "box", size: [33, 27, 2], r: 4, at: [52, 0, 329.6], color: GREY_D, texture: ARMOR(196, 60, 2), metal: 0.35 });
+B({ id: "belly-hatch-handle", kind: "tube", points: [[44, -8, 329.8], [41, -8, 325], [41, 8, 325], [44, 8, 329.8]], r: 1.3, color: DARK, metal: 0.6 });
+B({ id: "belly-hatch-rear", kind: "box", size: [30, 40, 2], r: 4, at: [-120, 0, 332.4], color: "#6b7178", metal: 0.4 });
+// pipe runs along each lower edge, ducking up into the hips
+for (const s of [-1, 1]) B({ id: `belly-pipe-${s < 0 ? "s" : "p"}`, kind: "tube", points: [[-140, s * 40, 333], [HIP_R - 30, s * 40, 331], [HIP_R - 12, s * 30, 322], [HIP_R + 30, s * 34, 329], [HIP_F - 30, s * 34, 329], [HIP_F - 12, s * 30, 322], [HIP_F + 22, s * 36, 331], [144, s * 36, 333]], r: 2.2, color: "#5b6168", metal: 0.5, rough: 0.5 });
+// the front module's belly (kg 135-140): two proud plates split by a notch where the neck trunk runs, a wedge spine,
+// a mesh grille at the front, and dark cavities with machinery along both lower edges
+B({ id: "fbelly-plate", kind: "extrude", plane: "xy", outline: [[96, -32], [146, -32], [146, -10], [126, -10], [118, 0], [126, 10], [146, 10], [146, 32], [96, 32]], depth: 3, bevel: 1, at: [0, 0, 328.6], color: "#c3c8cd", texture: ARMOR(201, 70, 3), metal: 0.35, rough: 0.65 });
+B({ id: "fbelly-spine", kind: "extrude", plane: "xy", outline: [[146, -8], [146, 8], [106, 0]], depth: 4, bevel: 1, at: [0, 0, 326], color: "#a9afb6", texture: ARMOR(202, 60, 2), metal: 0.4 });
+B({ id: "fbelly-mesh", kind: "box", size: [10, 16, 1.6], r: 0.7, at: [138, 0, 324.6], color: "#33383e", rough: 0.85 });
+for (let k = 0; k < 6; k++) B({ id: `fbelly-mesh-bar-${k}`, kind: "box", size: [9, 1, 1], at: [138, -6.5 + k * 2.6, 324], color: METAL, metal: 0.6 });
+for (const s of [-1, 1]) {
+  B({ id: `fbelly-cavity-${s < 0 ? "s" : "p"}`, kind: "box", size: [46, 7, 3], r: 1, at: [120, s * 37, 330.2], color: "#2c3035", rough: 0.9 });
+  for (let k = 0; k < 3; k++) B({ id: `fbelly-gear-${s < 0 ? "s" : "p"}-${k}`, kind: "cylinder", r: 2.8, h: 5, segments: 16, at: [104 + k * 15, s * 37, 326], color: "#7a8087", metal: 0.6 });
+}
+// the lower front under the neck: an oval collar round the neck socket, mesh grilles either side, an angled chin plate
+B({ id: "socket-ring", kind: "torus", r: 38, tube: 4, segments: 48, at: [155, 0, 362], rot: [0, 90, 0], color: GREY_D, metal: 0.45 });
+for (const s of [-1, 1]) {
+  B({ id: `socket-mesh-${s < 0 ? "s" : "p"}`, kind: "box", size: [2, 14, 34], r: 0.8, at: [153.5, s * 30, 336], color: "#363b41", rough: 0.85 });
+  for (let k = 0; k < 5; k++) B({ id: `socket-mesh-bar-${s < 0 ? "s" : "p"}-${k}`, kind: "box", size: [1, 13, 1], at: [154.6, s * 30, 340 + k * 6], color: METAL, metal: 0.6 });
+  B({ id: `chin-plate-${s < 0 ? "s" : "p"}`, kind: "box", size: [3, 28, 34], r: 1, at: [149, s * 24, 326], rot: [s * 18, -14, 0], ...hull(198 + s) });
+}
 
 // ---- interior (colour-coded departments): troops in the centre module, speeder bikes low and the generator high in
 // the rear module, the hatchway to the neck corridor in the front module
@@ -263,7 +331,7 @@ export const DEPTS = [
     fn: "The generator in the upper rear module, under its sloping roof, feeds the leg drives, the guns and the systems in the head through armoured conduits.",
     canon: "Its exact place inside differs between sources. This placement is illustrative." },
   { id: "legs", name: "Leg drives", match: /^(thigh-|knee-|shin-|ankle-|foot-|hip-)/, anchor: [100, -42, 200],
-    fn: "Hip drums swing each leg and exposed hydraulic struts drive the knees and ankles. Only one foot is in the air at a time, so three feet always carry the weight. The round, ridged feet spread the load on snow.",
+    fn: "Under the belly, a transverse axle carries each pair of legs, driven from a shield-shaped housing and a ribbed barrel; exposed hydraulic struts drive the knees and ankles. Only one foot is in the air at a time, so three feet always carry the weight. The round, ridged feet spread the load on snow.",
     canon: "On screen, AT-AT knees bend forward on all four legs. The gait timing here is a physical guess." },
 ];
 export const SOURCES = [

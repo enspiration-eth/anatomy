@@ -1,0 +1,255 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { writeThreeFigure } from "../../scripts/build-three.mjs";
+import { scene, L1, L2, HZ, ANKLE, LEGS, GAIT, speed, GROUND, SNOW, DEPTS, SOURCES, FACTS } from "./scene.mjs";
+import { legAngles, footAt } from "./gait.mjs";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const UNIT_M = 0.04;
+const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const live = `
+const L1 = ${L1}, L2 = ${L2}, HZ = ${HZ}, ANKLE = ${ANKLE}, LEGS = ${JSON.stringify(LEGS)}, GAIT = ${JSON.stringify(GAIT)}, SPEED = ${speed}, GROUND = ${JSON.stringify(GROUND)}, NSNOW = ${SNOW}, UNIT_M = ${UNIT_M};
+const DEPTS = ${JSON.stringify(DEPTS.map((d) => ({ ...d, match: d.match.source })))};
+const SRC = ${JSON.stringify(SOURCES)};
+${legAngles.toString()}
+${footAt.toString()}
+const { THREE } = fig;
+const P = (id) => fig.parts.get(id), dark = fig.theme === "dark";
+const root = stage.closest(".iso-plate")?.parentElement ?? document.body;
+const $ = (q) => root.querySelector(q), status = $("[data-live]");
+const sliceBtn = $("[data-slice]"), sliceIn = $("[data-depth]"), sliceOut = $("[data-depth-out]"), walkBtn = $("[data-walk]");
+const viewBtns = [...root.querySelectorAll("[data-view]")], deptBtns = [...root.querySelectorAll("[data-dept]")];
+const NAMES = { fl: "front left", fr: "front right", rl: "rear left", rr: "rear right" };
+
+// ---------- state
+let t = 1.3, walking = !still.matches, az = 30, el = 16, zoom = 1.15, sliceOn = false, sliceY = -40, open = null, hover = null, frame = 0;
+const target = new THREE.Vector3(70, 0, 330);
+const tour = idleTour(6000, () => runner.kick());
+let tourClock = 0;
+const body = P("body"), head = P("head"), neck = P("neck");
+const legs = LEGS.map(([n, hx, hy, ph]) => ({ n, hx, hy, ph, thigh: P("thigh-" + n), shin: P("shin-" + n), foot: P("foot-" + n), stance: true }));
+const prints = [];
+let travelled = 0;
+
+// ---------- gait, prints
+function pose(time, bob) {
+  for (const L of legs) {
+    const [fx, lift, stance] = footAt(L.hx, L.ph, time);
+    if (stance && !L.stance) prints.push({ x: fx, y: L.hy, age: 0 });
+    L.stance = stance; L.lift = lift;
+    const [a, b, c] = legAngles(fx - L.hx, ANKLE + lift - bob - HZ);
+    L.thigh.rotation.y = a; L.shin.rotation.y = b; L.foot.rotation.y = c;
+  }
+}
+function advance(dt) {
+  t += dt; travelled += SPEED * dt;
+  for (const p of prints) { p.x -= SPEED * dt; p.age += dt; }
+  while (prints.length && prints[0].x < -GROUND.w / 2 - 80) prints.shift();
+}
+function bobAt(time) { return -4 + 4 * Math.cos((4 * Math.PI * time) / GAIT.period); }
+function sway(time) {
+  const bob = bobAt(time);
+  body.position.z = bob;
+  let roll = 0; for (const L of legs) roll += (L.lift || 0) * Math.sign(L.hy) * 0.0004;
+  body.rotation.x = roll;
+  body.rotation.y = 0.012 * Math.sin((2 * Math.PI * time) / GAIT.period);
+  head.rotation.z = 0.14 * Math.sin(time * 0.21);
+  neck.rotation.x = 0;
+  return bob;
+}
+// ---------- snow ground
+const R = 58;
+function snowHeight(x, y) {
+  let z = 2.4 * Math.sin((x + travelled) * 0.013) * Math.cos(y * 0.021) + 1.6 * Math.sin((x + travelled) * 0.031 + y * 0.017) + 1;
+  for (const p of prints) {
+    const dx = x - p.x, dy = y - p.y; if (dx > 80 || dx < -80 || dy > 80 || dy < -80) continue;
+    const r = Math.hypot(dx, dy), fade = Math.exp(-p.age / 30);
+    if (r < R) z -= 13 * fade * (1 - Math.pow(r / R, 6)) + 2.5 * fade * (Math.abs(Math.sin(Math.atan2(dy, dx) * 2)) > 0.92 && r > R * 0.72 ? 1 : 0);
+    else if (r < R + 18) z += 3.5 * fade * Math.sin((Math.PI * (r - R)) / 18);
+  }
+  return z;
+}
+const SNOW_RAMP = [[0, "#7d91ae"], [0.5, "#c7d3e3"], [0.78, "#edf2f8"], [1, "#ffffff"]];
+function drawSnow() {
+  fig.heights("snowfield", snowHeight);
+  fig.paint("snowfield", (x, y, z) => Math.min(1, Math.max(0, 0.78 + z / 22)), SNOW_RAMP);
+}
+// ---------- falling snow
+const flakes = P("flakes"), fpos = [], fm = new THREE.Matrix4(), fq = new THREE.Quaternion(), fv = new THREE.Vector3(), fs = new THREE.Vector3(1, 1, 1);
+for (let i = 0; i < NSNOW; i++) { const h = Math.sin(i * 12.9898) * 43758.5453; fpos.push([(h - Math.floor(h) - 0.5) * GROUND.w, ((Math.sin(i * 78.233) * 43758.5453) % 1) * GROUND.d / 2, ((i * 37) % 820), 28 + (i % 7) * 7]); }
+function snowfall(dt) {
+  for (let i = 0; i < NSNOW; i++) { const f = fpos[i];
+    f[2] -= f[3] * dt; f[0] -= SPEED * 0.25 * dt + 6 * Math.sin(t * 0.7 + i) * dt;
+    if (f[2] < 0) { f[2] += 820; } if (f[0] < -GROUND.w / 2) f[0] += GROUND.w;
+    flakes.setMatrixAt(i, fm.compose(fv.set(f[0], f[1], f[2]), fq, fs)); }
+  flakes.instanceMatrix.needsUpdate = true;
+}
+
+// ---------- camera
+function applyView() { fig.view(az, el, zoom, target); }
+// ---------- section
+function applySlice() {
+  fig.setSection(sliceOn ? sliceY : -2000);
+  if (sliceBtn) { sliceBtn.setAttribute("aria-pressed", String(sliceOn)); sliceBtn.textContent = sliceOn ? "S Slice on" : "S Slice off"; }
+  if (sliceIn) sliceIn.value = String(sliceY);
+  if (sliceOut) sliceOut.textContent = sliceOn ? (sliceY * UNIT_M >= 0 ? "+" : "−") + Math.abs(sliceY * UNIT_M).toFixed(1) + " m" : "off";
+}
+
+// ---------- departments: meshes, hover highlight, click card with a leader
+const deptOf = new Map(), deptMeshes = new Map(), walker = [];
+const RX = DEPTS.map((d) => [d, new RegExp(d.match)]);
+fig.scene.traverse((o) => {
+  if (!(o.isMesh) || !o.name || o.name === "snowfield" || o.name === "flakes") return;
+  walker.push(o);
+  const hit = RX.find(([, rx]) => rx.test(o.name));
+  if (hit) { deptOf.set(o, hit[0]); if (!deptMeshes.has(hit[0].id)) deptMeshes.set(hit[0].id, []); deptMeshes.get(hit[0].id).push(o); }
+});
+const HI = new THREE.Color(dark ? "#ffb347" : "#ff9a1f");
+for (const list of deptMeshes.values()) for (const m of list) { m.userData.em = m.material.emissive ? m.material.emissive.clone() : null; m.userData.ei = m.material.emissiveIntensity ?? 1; }
+function highlight(id, on) {
+  for (const m of deptMeshes.get(id) ?? []) { if (!m.material.emissive) continue;
+    if (on) { m.material.emissive.copy(HI); m.material.emissiveIntensity = dark ? 0.32 : 0.22; } else { m.material.emissive.copy(m.userData.em); m.material.emissiveIntensity = m.userData.ei; } }
+}
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pick(e) {
+  const r = fig.renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, fig.camera);
+  for (const h of ray.intersectObjects(walker, false)) {
+    if (sliceOn && h.point.y < sliceY) continue; // clipped away: look through it
+    return deptOf.get(h.object) ?? null;
+  }
+  return null;
+}
+stage.style.position = "relative";
+const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+overlay.setAttribute("class", "atat-leader"); overlay.setAttribute("aria-hidden", "true");
+overlay.innerHTML = '<line></line><circle r="5"></circle><circle r="11" class="ring"></circle>';
+const card = document.createElement("div");
+card.className = "atat-card"; card.setAttribute("role", "dialog"); card.hidden = true; overlay.style.display = "none";
+stage.append(overlay, card);
+const lineEl = overlay.querySelector("line"), dotEl = overlay.querySelectorAll("circle");
+function openCard(d) {
+  if (open) highlight(open.id, false);
+  open = d; highlight(d.id, true);
+  card.innerHTML = '<button type="button" class="atat-x" aria-label="Close">×</button><p class="atat-k">Department</p><h3></h3><p class="atat-fn"></p><p class="atat-canon"></p><p class="atat-src"></p>';
+  card.querySelector("h3").textContent = d.name; card.querySelector(".atat-fn").textContent = d.fn;
+  card.querySelector(".atat-canon").textContent = "Canon note: " + d.canon;
+  card.querySelector(".atat-src").innerHTML = 'Fiction, after <a href="' + SRC[0][2] + '">Wookieepedia</a> and the <a href="' + SRC[1][2] + '">StarWars.com databank</a>.';
+  card.querySelector(".atat-x").addEventListener("click", (e) => { e.stopPropagation(); closeCard(); });
+  card.setAttribute("aria-label", d.name); card.hidden = false; overlay.style.display = "";
+  deptBtns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.dept === d.id)));
+  if (status) status.textContent = d.name + ": " + d.fn;
+  placeCard(); runner.kick();
+}
+function closeCard() { if (!open) return; highlight(open.id, false); if (hover && hover.id === open.id) highlight(hover.id, true); open = null; card.hidden = true; overlay.style.display = "none"; deptBtns.forEach((b) => b.setAttribute("aria-pressed", "false")); fig.render(); }
+card.addEventListener("pointerdown", (e) => e.stopPropagation());
+const av = new THREE.Vector3();
+function placeCard() {
+  if (!open) return;
+  const W = stage.clientWidth, H = fig.renderer.domElement.clientHeight;
+  av.set(...open.anchor); body.localToWorld(av); av.project(fig.camera);
+  const ax = (av.x + 1) / 2 * W, ay = (1 - av.y) / 2 * H;
+  const cw = Math.min(280, W - 24), ch = card.offsetHeight || 160, left = ax > W / 2;
+  const cx = W < 520 ? 12 : left ? 16 : W - cw - 16, cy = W < 520 ? H - ch - 8 : Math.min(H - ch - 12, Math.max(12, ay - ch / 2));
+  card.style.width = cw + "px"; card.style.left = cx + "px"; card.style.top = cy + "px";
+  overlay.setAttribute("width", W); overlay.setAttribute("height", H); overlay.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const ex = W < 520 ? Math.min(Math.max(ax, cx + 20), cx + cw - 20) : left ? cx + cw : cx, ey = W < 520 ? cy : Math.min(Math.max(ay, cy + 16), cy + ch - 16);
+  lineEl.setAttribute("x1", ex); lineEl.setAttribute("y1", ey); lineEl.setAttribute("x2", ax); lineEl.setAttribute("y2", ay);
+  dotEl.forEach((c) => { c.setAttribute("cx", ax); c.setAttribute("cy", ay); });
+}
+
+// ---------- input: orbit drag, wheel zoom, hover, click
+let down = null;
+stage.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, az, el, moved: false }; stage.setPointerCapture(e.pointerId); tour.touch(); });
+stage.addEventListener("pointermove", (e) => {
+  if (down) { const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 4) down.moved = true;
+    if (down.moved) { az = down.az - dx * 0.35; el = clamp(down.el + dy * 0.25, 2, 80); applyView(); runner.kick(); } return; }
+  const d = pick(e);
+  if ((d && d.id) !== (hover && hover.id)) { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = d; if (d) highlight(d.id, true); stage.style.cursor = d ? "pointer" : "grab"; runner.kick(); }
+});
+stage.addEventListener("pointerup", (e) => {
+  if (!down) return; const moved = down.moved; down = null; if (moved) return;
+  const d = pick(e); if (d) openCard(d); else closeCard(); runner.kick();
+});
+stage.addEventListener("pointerleave", () => { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = null; runner.kick(); });
+stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 0.6, 3.2); applyView(); runner.kick(); }, { passive: false });
+const setView = (k) => { if (k === "side") { az = 0; el = 3; zoom = 1.55; } else if (k === "front") { az = 90; el = 8; zoom = 1.3; } else { az = 30; el = 16; zoom = 1.15; } applyView(); };
+viewBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); setView(b.dataset.view); runner.kick(); }));
+deptBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); const d = DEPTS.find((q) => q.id === b.dataset.dept); if (open && open.id === d.id) closeCard(); else openCard(d); }));
+sliceBtn?.addEventListener("click", () => { tour.touch(); sliceOn = !sliceOn; applySlice(); runner.kick(); });
+sliceIn?.addEventListener("input", () => { tour.touch(); sliceOn = true; sliceY = Number(sliceIn.value); applySlice(); runner.kick(); });
+walkBtn?.addEventListener("click", () => { tour.touch(); walking = !walking && !still.matches; walkBtn.setAttribute("aria-pressed", String(walking)); walkBtn.textContent = walking ? "Space Pause walk" : "Space Walk"; runner.kick(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) { closeCard(); e.preventDefault(); } });
+stage.addEventListener("keydown", (e) => {
+  if (e.key === "[" || e.key === "]") { sliceOn = true; sliceY = clamp(sliceY + (e.key === "]" ? 10 : -10), -120, 120); applySlice(); }
+  else if (e.key === "s" || e.key === "S") { sliceOn = !sliceOn; applySlice(); }
+  else if (e.key === "ArrowLeft" || e.key === "ArrowRight") { az += e.key === "ArrowRight" ? 10 : -10; applyView(); }
+  else if (e.key === "ArrowUp" || e.key === "ArrowDown") { el = clamp(el + (e.key === "ArrowUp" ? 5 : -5), 2, 80); applyView(); }
+  else if (e.key === "v" || e.key === "V") setView("side");
+  else if (e.key === " ") walkBtn?.click();
+  else if (/^[1-7]$/.test(e.key)) { openCard(DEPTS[Number(e.key) - 1]); }
+  else return;
+  e.preventDefault(); tour.touch(); runner.kick();
+});
+
+// ---------- loop
+function readout() {
+  const sw = legs.find((L) => !L.stance);
+  const text = (walking ? (sw ? NAMES[sw.n] + " leg swinging" : "all four feet down") : still.matches ? "standing mid-stride" : "paused") + " · " + (sliceOn ? "slice " + (sliceY * UNIT_M >= 0 ? "+" : "−") + Math.abs(sliceY * UNIT_M).toFixed(1) + " m" : "slice off") + (open ? " · " + open.name : "");
+  readoutTo(stage, text);
+}
+function draw(dt) {
+  const bob = sway(t); pose(t, bob);
+  if (frame++ % 3 === 0 || dt === 0) drawSnow();
+  fig.render(); placeCard(); readout();
+}
+const runner = loop(stage, (dt) => {
+  if (tour.touring) {
+    tourClock += dt;
+    az = 30 + 38 * Math.sin(tourClock * 0.09); el = 16 + 6 * Math.sin(tourClock * 0.13);
+    const ph = (tourClock % 36) / 36; // every 36 s: slice in from the near side, hold, out
+    if (ph > 0.45) { sliceOn = true; sliceY = -120 + 140 * Math.min(1, (ph - 0.45) / 0.25); } else if (sliceOn && ph < 0.05) sliceOn = false;
+    applySlice(); applyView();
+  }
+  if (walking) { advance(dt); snowfall(dt); }
+  draw(dt);
+  return walking || tour.touring || !!down;
+});
+// seed footprints by walking 14 s unrendered, so the field already has a trail
+for (let k = 0; k < 14 * 30; k++) { advance(1 / 30); pose(t, bobAt(t)); }
+if (still.matches) t = 2.0;
+snowfall(0); applyView(); applySlice(); draw(0);
+if (walkBtn) { walkBtn.setAttribute("aria-pressed", String(walking)); walkBtn.textContent = walking ? "Space Pause walk" : "Space Walk"; }
+window.__atat = { open: (id) => openCard(DEPTS.find((d) => d.id === id)), close: closeCard, get card() { return open && open.id; }, prints, setSlice: (y) => { sliceOn = y !== null; if (y !== null) sliceY = y; applySlice(); draw(0); }, view: (a, e, z = 1) => { az = a; el = e; zoom = z; applyView(); draw(0); }, legs };
+`;
+const css = `.at-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;font:11px/1.4 var(--anatomy-mono);color:var(--anatomy-muted)}
+.at-ctl button{padding:5px 9px;border:1px solid var(--anatomy-mid);background:transparent;color:var(--anatomy-muted);font:inherit;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.at-ctl button[aria-pressed="true"]{color:var(--anatomy-strong);border-color:var(--anatomy-strong)}.at-ctl input{width:150px}.at-ctl .at-gap{width:10px}
+.atat-leader{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}.atat-leader line{stroke:var(--anatomy-strong);stroke-width:1.2}.atat-leader circle{fill:var(--anatomy-strong)}.atat-leader circle.ring{fill:none;stroke:var(--anatomy-strong);stroke-width:1;opacity:.6}
+.atat-card{position:absolute;z-index:3;box-sizing:border-box;padding:12px 14px 10px;background:var(--anatomy-card,var(--anatomy-page));border:1px solid var(--anatomy-strong);color:var(--anatomy-muted);font:11px/1.55 var(--anatomy-mono);box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.atat-card h3{margin:0 0 6px;font:600 13px/1.3 var(--anatomy-mono);color:var(--anatomy-strong);letter-spacing:.04em;text-transform:uppercase}
+.atat-card p{margin:0 0 6px}.atat-card .atat-k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin:0 0 2px}.atat-card .atat-canon{opacity:.85}.atat-card .atat-src{font-size:10px;opacity:.75}.atat-card a{color:inherit}
+.atat-x{position:absolute;right:6px;top:4px;border:0;background:transparent;color:var(--anatomy-strong);font:16px/1 var(--anatomy-mono);cursor:pointer;padding:4px}
+.at-notes{margin-top:12px;font:11px/1.6 var(--anatomy-mono);color:var(--anatomy-muted)}.at-notes a{color:inherit}.at-notes ul{margin:4px 0 8px 18px;padding:0}
+.at-live{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}`;
+const SIMPLIFIED = [
+  "This is fiction. The walker is an original model built from code in the spirit of the design, not a film asset or official blueprint.",
+  "Interior layout is illustrative. Canon names the crew, troops, speeder bikes and guns [1][2], not a deck plan.",
+  "The walk is a lateral-sequence gait: one foot in the air at a time, the slow, stable gait of large quadrupeds. Knees bend forward. Leg angles come from two-bone inverse kinematics, so every planted foot holds still on the snow as the ground slides back beneath it.",
+  "Footprints are pressed into a live heightfield as each foot lands. They drift back with the snow and fill in over about half a minute.",
+  `Scale is about 4 cm per unit, which puts the roof near ${FACTS.heightM} m, the height Wookieepedia gives [1].`,
+];
+const notes = `<details class="at-notes"><summary>Sources and simplifications</summary><ul>${SIMPLIFIED.map((t) => `<li>${esc(t)}</li>`).join("")}</ul><p>Sources:</p><ul>${SOURCES.map(([n, t, u]) => `<li>${n} <a href="${u}">${esc(t)}</a></li>`).join("")}</ul></details>`;
+writeThreeFigure({
+  dir: here, name: "at-at-3d", scene, live, css, width: 980,
+  keys: [
+    { mark: "raised", label: "Hatched faces: the walls the slice cuts through" },
+    { mark: "lit", label: "A highlighted department: click it for its card" },
+    { mark: "edge", label: "Footprints pressed into the snow, drifting back as it walks" },
+  ],
+  caption: `An all-terrain armoured transport walking in place through snow. It is fiction, built here as an original procedural model after the canon design [1][2]. It walks one foot at a time: each leg's thigh, knee and ankle angles are solved from where its foot must be, so a planted foot stays still while the snow slides back beneath it. Each landing presses a print with a raised rim into the snow, and older prints fill in. Turn on the slice and move it through the body from the side to see what lies inside: the cockpit in the head, the neck corridor, the troop bay, the speeder bike bay, the generator and the leg drives. Click any of them for a card explaining what it does. Canon gives a crew of ${FACTS.crew} in the cockpit, about ${FACTS.troops} troops and ${FACTS.bikes} speeder bikes [1]; the deck layout shown is illustrative.`,
+  stage: { role: "group", label: "Walker in snow. Drag to orbit, scroll to zoom, arrow keys turn the camera, V side view. S toggles the slice, [ and ] move it. Keys 1 to 7 open a department card, Escape closes it. Space pauses the walk." },
+  after: `<div class="at-ctl" role="group" aria-label="View and slice"><button type="button" data-walk aria-pressed="true">Space Pause walk</button><span class="at-gap"></span><button type="button" data-view="iso">Iso</button><button type="button" data-view="side">V Side</button><button type="button" data-view="front">Front</button><span class="at-gap"></span><button type="button" data-slice aria-pressed="false">S Slice off</button><label>Depth <input type="range" min="-120" max="120" step="2" value="-40" data-depth aria-label="Slice depth across the body, from the near side"></label><span data-depth-out>off</span></div>
+<div class="at-ctl" role="group" aria-label="Departments">${DEPTS.map((d, i) => `<button type="button" data-dept="${d.id}" aria-pressed="false">${i + 1} ${esc(d.name)}</button>`).join("")}</div><span class="at-live" aria-live="polite" data-live></span>${notes}`,
+});

@@ -179,6 +179,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     else if (part.kind === "ticks" || part.kind === "rail") node = new THREE.LineSegments(tickLines(part), lineMaterial(part));
     else if (part.kind === "instances") {
       node = instancesOf(part, custom(part) ?? material(part.tone ?? "mid", part.lit));
+      if (part.cut && section) node.material = cutMaterial(node.material, section, part.cut, part.hatch);
       node.castShadow = node.receiveShadow = true;
     } else {
       const geometry = geometryOf(part);
@@ -277,6 +278,23 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     THREE, scene, camera, renderer, parts, screens, shaders, colors, theme, RAMPS, rampColor,
     /** Repaints a part's vertex colours: fn(x, y, z, i) in its own frame returns t (0..1 on `ramp`) or a Color. */
     paint: (id, fn, ramp) => paintVertices(parts.get(id), fn, ramp),
+    /** The section plane (null without a section). setSection(at) moves it: parts with cut keep the side beyond `at`. */
+    section,
+    setSection: (at) => { if (section) section.constant = -at; },
+    /**
+     * Orbits the camera: azimuth and elevation in degrees (any azimuth), about `target` (default the scene centre),
+     * with `zoom` (1 = the fitted size). The frustum keeps the fitted width, centred on the target.
+     */
+    view(azimuth, elevation, zoom = 1, target = centre) {
+      const a = rad(azimuth), e = rad(elevation);
+      const halfW = (camera.userData.halfW ??= (camera.right - camera.left) / 2), aspect = (camera.right - camera.left) / (camera.top - camera.bottom);
+      Object.assign(camera, { left: -halfW, right: halfW, top: halfW / aspect, bottom: -halfW / aspect, zoom });
+      camera.position.copy(target).add(new THREE.Vector3(-Math.cos(e) * Math.sin(a), -Math.cos(e) * Math.cos(a), Math.sin(e)).multiplyScalar(radius * 6));
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+      camera.updateProjectionMatrix();
+    },
+    centre,
     /** Lifts a heightfield part: fn(x, y) in its own frame returns z. */
     heights: (id, fn) => setHeights(parts.get(id), fn),
     /** Lays a ribbon part along polylines [{ points: [[x, y, z], ...], closed }] (its scene width unless given). */

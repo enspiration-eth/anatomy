@@ -349,3 +349,25 @@ Use these when the subject is an algorithm over a field: contouring, thresholds,
   and convergence.
 - **Framing.** A wide bench with a few tall parts wastes the top of the card under the default box fit. Use
   `fit: "parts"` to frame each part's own box.
+
+## 11. Explorable models: orbit, live sections, cards on top (the walker, Fig 11)
+
+- **Orbit.** `fig.view(azimuth, elevation, zoom, target)` places the orthographic camera at any azimuth, keeping
+  the fitted width centred on `target`. Drag changes azimuth and elevation, scroll changes zoom. Treat a
+  pointer that moves less than 4 px as a click, so that orbiting never opens a card. Provide side, front and
+  iso presets.
+- **Live section.** Declare `section: { axis, at }` with `at` far outside the model (off). Call
+  `fig.setSection(at)` to move it. Mark *everything* in the model `cut: true` (the near legs too), because a
+  true section removes all that lies in front of it. Build hulls from thick plates, so the cut shows wall
+  thickness and the rooms inside read as rooms. When picking, skip ray hits on the clipped side
+  (`hit.point[axis] < at`): the raycaster still sees clipped geometry.
+- **Cards on top.** An HTML card inside the stage (`position: absolute`), plus an SVG leader whose end is the
+  department's anchor. The anchor is in the moving group's frame: `group.localToWorld(v).project(camera)`.
+  Re-place the card every frame, because the walk, the orbit and the slice all move the anchor. Hover only
+  highlights (emissive on the department's own cut materials). A click opens the card; ×, Esc and a click on
+  empty scene close it. Offer a department list for keyboard users and use number keys as shortcuts. On a
+  phone, dock the card along the bottom.
+- **Footprints in snow.** Use a `heightfield` with a depression and a raised rim per footprint. Update it every
+  third frame, and paint it from its own height so the hollows read blue. Scroll the footprints with the ground
+  speed and age them out with an exponential fill. With IK, a planted foot moves back at exactly the ground
+  speed, so it never slides. Test that.

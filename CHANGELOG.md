@@ -4,6 +4,20 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 
 ## Unreleased (three.js fork)
 
+### All-terrain walker figure, orbit camera, live sections, department cards
+
+- `examples/at-at-3d` is an original procedural walker, after the AT-AT design.
+  - **Walk:** a lateral-sequence walk in place, with knees and ankles solved by two-bone IK and a swaying body.
+  - **Snow:** footprints are pressed into a live snow heightfield, drift back and fill in, while snow falls.
+  - **Camera:** drag to orbit, scroll to zoom, with iso, side and front presets.
+  - **Slice:** a side section can be moved to any depth (slider, `[` `]`). Cut walls are hatched.
+  - **Departments:** seven departments highlight on hover. A click opens an HTML card on top of the scene, joined by a leader line that tracks the department. It closes with ×, Esc or a click elsewhere.
+  - **Canon:** notes are labelled as fiction, with sources.
+- Kit:
+  - `fig.view(az, el, zoom, target)`: orbit camera, any azimuth.
+  - `fig.setSection(at)` and `fig.section`: a live section plane.
+  - Instances can now be cut.
+
 ### Marching squares figure, live heightfields and contour ribbons
 
 - `examples/marching-squares-3d`: marching squares as a contour-survey bench.

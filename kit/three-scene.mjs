@@ -211,7 +211,7 @@ export function validateScene(spec) {
   if (spec.section !== undefined && !(spec.section && ["x", "y", "z"].includes(spec.section.axis) && isNum(spec.section.at))) bad('section must be { axis: "x" | "y" | "z", at }');
   const cuts = spec.parts.filter((p) => p.cut);
   if (cuts.length && !spec.section) bad(`parts are cut (${cuts.slice(0, 3).map((p) => p.id).join(", ")}) but the scene has no section`);
-  for (const p of cuts) if (p.shader || ["plane", "disc", "ticks", "rail", "group", "instances"].includes(p.kind)) bad(`part "${p.id}": only solid, non-shader parts can be cut`);
+  for (const p of cuts) if (p.shader || ["plane", "disc", "ticks", "rail", "group"].includes(p.kind)) bad(`part "${p.id}": only solid, non-shader parts can be cut`);
   if (spec.env !== undefined && !(spec.env === true || (spec.env && typeof spec.env === "object" && (spec.env.intensity === undefined || (isNum(spec.env.intensity) && spec.env.intensity >= 0 && spec.env.intensity <= 3))))) bad("env must be true or { intensity: 0-3 }");
   const reflective = spec.parts.filter((p) => (p.material?.metal ?? p.metal ?? 0) >= 0.7 || p.material?.transmission);
   if (reflective.length && !spec.env) bad(`metal (>= 0.7) and transmissive parts reflect their surroundings: set env (found ${reflective.map((p) => p.id).slice(0, 3).join(", ")})`);

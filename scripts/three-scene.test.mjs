@@ -395,3 +395,29 @@ test("the marching squares figure: a valid hero that builds", async () => {
   assert.equal(S.scene.parts.filter((p) => /^tile-\d+$/.test(p.id)).length, 16);
   execFileSync(process.execPath, ["examples/marching-squares-3d/build.mjs", "--check"]);
 });
+
+test("the walker: valid hero; IK lands every foot; planted feet hold still; one foot in the air at a time", async () => {
+  const S = await import("../examples/at-at-3d/scene.mjs");
+  const G = await import("../examples/at-at-3d/gait.mjs");
+  assert.deepEqual(validateScene(S.scene), []);
+  assert.ok(solidCount(S.scene) >= 80);
+  // forward kinematics of the solved angles reaches the target (rotation about y: down vector -> x = -sin(theta))
+  for (const [dx, dz] of [[0, -420], [140, -420], [-140, -400], [60, -350]]) {
+    const [a, b] = G.legAngles(dx, dz);
+    const x = -S.L1 * Math.sin(a) - S.L2 * Math.sin(a + b), z = -S.L1 * Math.cos(a) - S.L2 * Math.cos(a + b);
+    assert.ok(Math.hypot(x - dx, z - dz) < 1e-6, `reach ${dx},${dz}`);
+    const [, , c] = G.legAngles(dx, dz); assert.ok(Math.abs(a + b + c) < 1e-9, "foot stays level");
+  }
+  // in stance a foot moves back at exactly the ground speed, so it does not slide on the snow
+  const [x0, , st0] = G.footAt(170, 0, 0.5), [x1, , st1] = G.footAt(170, 0, 0.6);
+  assert.ok(st0 && st1 && Math.abs((x0 - x1) / 0.1 - S.speed) < 1e-6);
+  for (let t = 0.01; t < S.GAIT.period; t += 0.05) {
+    const up = S.LEGS.filter(([, hx, , ph]) => !G.footAt(hx, ph, t)[2]).length;
+    assert.ok(up <= 1, `t ${t.toFixed(2)}: ${up} feet up`);
+  }
+  // the whole stride is reachable from the hip
+  for (const dx of [-S.GAIT.stride / 2, S.GAIT.stride / 2]) assert.ok(Math.hypot(dx, S.HZ + 8 - S.ANKLE) < S.L1 + S.L2);
+  assert.ok(S.DEPTS.length >= 7 && S.DEPTS.every((d) => d.fn && d.canon && S.scene.parts.some((p) => d.match.test(p.id))));
+  assert.ok(S.SOURCES.every(([, , u]) => u.startsWith("https://")));
+  execFileSync(process.execPath, ["examples/at-at-3d/build.mjs", "--check"]);
+});

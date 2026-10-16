@@ -322,3 +322,30 @@ use V ∝ p·r/|r|³ from the heart dipole, put through `0.5 + 0.5·tanh(V/scale
 The fit box and shadow floor were computed before parents' world matrices were updated, so parts inside
 moved groups were boxed at their local positions. That dropped the floor and left empty space under some
 figures. The runtime now calls `scene.updateMatrixWorld(true)` first.
+
+## 10. Algorithms as machines: live heightfields, contour ribbons, lookup tables (marching squares, Fig 10)
+
+Use these when the subject is an algorithm over a field: contouring, thresholds, sampling, interpolation.
+
+- **The data is the terrain.** Show a scalar field as a `heightfield` lifted by a *monotone* height function
+  of the value, `fig.heights(id, (x, y) => g(f(x, y)))`. Paint it with `fig.paint(id, fn, "field")`, where
+  the `field` ramp steps from cool to warm at t = 0.5. Map f < iso to t < 0.49 and f ≥ iso to t > 0.51, so
+  "inside" is a colour. Because g is monotone, a flat plane at g(iso) (water) meets the terrain exactly on
+  the true iso-contour: the threshold becomes a physical level the reader can see.
+- **Samples are separate objects.** Draw the grid corners as `instances` (pins with per-instance colour),
+  and update their matrices and `setColorAt` for each resolution. Size `items` for the finest grid and set
+  `mesh.count` for coarser ones. The reader has to see that the algorithm knows only these samples.
+- **Results as live ribbons.** `fig.ribbon(id, lines)` lays mitred strips along polylines. Closed loops have no
+  seam, and uv.x is arc length / 100. The `contour` shader runs dashes along uv.x, so the order in which
+  the segments were stitched, and that a loop closes, is visible. Rebuild ribbons only when the data changes,
+  not every frame.
+- **A lookup table is a physical case of stencils.** Give each entry a tile with a small `plane` + `screen`
+  (256 px is legible at 4×). Redraw only the tiles whose state changed, and lift the current one with a
+  follow.
+- **Show the arithmetic once, on an instrument.** An inspector `screen` with the inputs and the formula
+  (`t = (iso − a)/(b − a) = 0.37`) teaches more than labels in the drawing, and the card readout stays one line.
+- **Keep the model pure.** Write it as a module (`march.mjs`) that is inlined into the page with its exports
+  stripped and imported by the tests. Test the table exhaustively, interpolation on a linear field, closure
+  and convergence.
+- **Framing.** A wide bench with a few tall parts wastes the top of the card under the default box fit. Use
+  `fit: "parts"` to frame each part's own box.

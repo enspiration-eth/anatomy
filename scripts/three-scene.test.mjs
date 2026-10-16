@@ -317,3 +317,81 @@ test("the biofield figure: valid hero, high-poly body, measured magnitudes and f
   for (const p of B.scene.parts.filter((q) => /^(ecg|emg)-.*-mount$/.test(q.id))) assert.ok(Math.abs(B.skinDistance(...p.at)) < 1, `${p.id} on the skin`);
   assert.ok(B.SOURCES.every(([, , u]) => u.startsWith("https://")));
 });
+
+test("heightfields, ribbons, the contour shader and fit: validation", () => {
+  const ok = base([...boxes(40), { id: "t", kind: "heightfield", size: [100, 100], grid: 32 }, { id: "c", kind: "ribbon", width: 3, shader: { name: "contour" } }]);
+  assert.deepEqual(validateScene(ok), []);
+  assert.equal(solidCount(ok), 41); // the heightfield is a solid, the ribbon is not
+  assert.ok(validateScene(base([...boxes(40), { id: "t", kind: "heightfield", size: [100] }])).some((p) => /size/.test(p)));
+  assert.ok(validateScene(base([...boxes(40), { id: "t", kind: "heightfield", size: [100, 100], grid: 1000 }])).some((p) => /grid/.test(p)));
+  assert.ok(validateScene(base([...boxes(40), { id: "c", kind: "ribbon", width: 0 }])).some((p) => /width/.test(p)));
+  assert.ok(validateScene(base([...boxes(40), { id: "c", kind: "tube", points: [[0, 0, 0], [1, 0, 0]], r: 1, shader: { name: "contour" } }])).some((p) => /ribbon/.test(p)));
+  assert.ok(validateScene({ ...base(boxes(40)), fit: "tight" }).some((p) => /fit/.test(p)));
+  assert.deepEqual(validateScene({ ...base(boxes(40)), fit: "parts" }), []);
+});
+
+test("marching squares: the 16-case table separates inside from outside, saddles included", async () => {
+  const M = await import("../examples/marching-squares-3d/march.mjs");
+  const EDGE = { T: [8, 4], R: [4, 2], B: [2, 1], L: [1, 8] };
+  const crossed = (idx) => Object.keys(EDGE).filter((e) => !!(idx & EDGE[e][0]) !== !!(idx & EDGE[e][1])).sort();
+  for (let idx = 0; idx < 16; idx++) {
+    const readings = idx === 5 || idx === 10 ? [M.SADDLES[idx].split, M.SADDLES[idx].joined] : [M.CASES[idx]];
+    for (const pairs of readings) {
+      // every crossed edge (corners on opposite sides) is used exactly once, and no other edge is
+      assert.deepEqual(pairs.flat().sort(), crossed(idx), `case ${idx}`);
+    }
+  }
+  assert.equal(M.CASES.filter((c) => c && c.length === 0).length, 2); // 0 and 15 draw nothing
+  assert.equal(M.caseIndex(1, 0, 1, 0, 0.5), 10);
+  assert.equal(M.caseIndex(0, 1, 0, 1, 0.5), 5);
+  // The saddle follows the centre sample: mean of the corners against iso.
+  const vals = new Float64Array([0, 2, 2, 0]); // n = 1: bl, br, tl, tr -> bl 0, br 2, tl 2, tr 0: case 8 | 2 = 10
+  const joined = M.cell(vals, 1, 2, 0, 0, 1), split = M.cell(vals, 1, 2, 0, 0, 1.1);
+  assert.equal(joined.idx, 10); assert.ok(joined.saddle && joined.joined); assert.ok(split.saddle && !split.joined);
+  assert.deepEqual(joined.pairs, M.SADDLES[10].joined); assert.deepEqual(split.pairs, M.SADDLES[10].split);
+});
+
+test("marching squares: linear interpolation is exact on a linear field, midpoints when off", async () => {
+  const M = await import("../examples/marching-squares-3d/march.mjs");
+  assert.equal(M.crossing(0, 2, 0.5), 0.25);
+  assert.equal(M.crossing(3, 1, 2.5), 0.25);
+  assert.equal(M.crossing(0, 2, 0.5, false), 0.5);
+  assert.equal(M.crossing(1, 1, 1), 0.5); // flat edge: no division by zero
+  // A plane f = x + 100 sampled on a grid: every crossing of iso lands exactly on x = iso - 100.
+  const n = 8, size = 160, vals = new Float64Array((n + 1) ** 2);
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) vals[j * (n + 1) + i] = -size / 2 + (i * size) / n + 100;
+  const { segs } = M.march(vals, n, size, 117, true);
+  assert.ok(segs.length === n);
+  for (const s of segs) for (const e of s) assert.ok(Math.abs(e.x - 17) < 1e-9);
+});
+
+test("marching squares: contours close, segments share crossings, and finer grids converge on the true circle", async () => {
+  const M = await import("../examples/marching-squares-3d/march.mjs");
+  const S = await import("../examples/marching-squares-3d/scene.mjs");
+  for (const n of S.RES) for (const iso of [0.6, 1, 2]) {
+    const vals = M.sampleGrid(S.SOURCES0, n, S.TANK.size);
+    const { segs } = M.march(vals, n, S.TANK.size, iso, true);
+    // each crossing key is used by exactly two segments (the field is below iso all round the border)
+    const use = new Map(); for (const s of segs) for (const e of s) use.set(e.key, (use.get(e.key) ?? 0) + 1);
+    assert.ok([...use.values()].every((c) => c === 2), `n ${n} iso ${iso}: every crossing shared`);
+    const lines = M.stitch(segs);
+    assert.ok(lines.length >= 1 && lines.every((l) => l.closed), `n ${n} iso ${iso}: ${lines.length} contours, all closed`);
+    assert.equal(lines.reduce((a, l) => a + l.points.length, 0), segs.length);
+  }
+  // one source: f = r^2/d^2 = iso is a circle of radius r / sqrt(iso)
+  const err = (n, interp) => { const vals = M.sampleGrid([[0, 0, 60]], n, 480); const { segs } = M.march(vals, n, 480, 1, interp); let m = 0; for (const s of segs) for (const e of s) m = Math.max(m, Math.abs(Math.hypot(e.x, e.y) - 60)); return m; };
+  assert.ok(err(32, true) < err(32, false), "interpolation beats midpoints");
+  assert.ok(err(32, true) < err(16, true) && err(16, true) < 4, `16: ${err(16, true)} 32: ${err(32, true)}`);
+  // The default bench has a saddle at 16 x 16, and a coarse grid misses a contour the fine grid finds.
+  const count = (n) => M.stitch(M.march(M.sampleGrid(S.SOURCES0, n, 480), n, 480, 1).segs).length;
+  assert.ok(M.march(M.sampleGrid(S.SOURCES0, 16, 480), 16, 480, 1).cells.some((c) => c.saddle));
+  assert.ok(count(32) > count(16));
+});
+
+test("the marching squares figure: a valid hero that builds", async () => {
+  const S = await import("../examples/marching-squares-3d/scene.mjs");
+  assert.deepEqual(validateScene(S.scene), []);
+  assert.ok(solidCount(S.scene) >= 80);
+  assert.equal(S.scene.parts.filter((p) => /^tile-\d+$/.test(p.id)).length, 16);
+  execFileSync(process.execPath, ["examples/marching-squares-3d/build.mjs", "--check"]);
+});

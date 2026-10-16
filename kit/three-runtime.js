@@ -1,14 +1,14 @@
 // Browser runtime for three.js figures. Inlined as an ES module by
 // scripts/inline-three.mjs; "three" comes from the page's import map.
 import * as THREE from "three";
-import { TEXTURES, SHADERS, RAMPS, rampColor, paintVertices, bakeColors, projectUVs, studioEnvironment, instancesOf, implicitGeometry } from "./three-looks.js";
+import { TEXTURES, SHADERS, RAMPS, rampColor, paintVertices, bakeColors, projectUVs, studioEnvironment, instancesOf, implicitGeometry, setHeights, setRibbon } from "./three-looks.js";
 
 const PALETTE = {
   dark: { bg: 0x161614, lo: 0x2c2c29, mid: 0x4a4a45, hi: 0x8a8a82, faint: 0x3a3a36, lit: 0xffffff, edge: 0x0d0d0c, line: 0x9a9a92 },
   light: { bg: 0xf4f4ef, lo: 0xb9b9b1, mid: 0xd6d6cf, hi: 0xf2f2ec, faint: 0xc8c8c0, lit: 0x111111, edge: 0x3a3a36, line: 0x55554f },
 };
 
-const isEffect = (part) => part.shader && ["plume", "glow", "cherenkov", "steam", "fieldline"].includes(part.shader.name);
+const isEffect = (part) => part.shader && ["plume", "glow", "cherenkov", "steam", "fieldline", "contour"].includes(part.shader.name);
 const rad = (deg) => (deg * Math.PI) / 180;
 
 /** Clones a material, clips it at `plane` and draws its back faces (the inside, seen through the cut) hatched. */
@@ -92,6 +92,8 @@ function geometryOf(part) {
     case "implicit": return implicitGeometry(part);
     case "disc": return new THREE.CircleGeometry(part.r, seg);
     case "plane": return new THREE.PlaneGeometry(part.size[0], part.size[1]);
+    case "heightfield": return new THREE.PlaneGeometry(part.size[0], part.size[1], part.grid ?? 64, part.grid ?? 64);
+    case "ribbon": { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 2)); return g; }
     default: return null;
   }
 }
@@ -183,6 +185,8 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
       if (part.texture?.project) projectUVs(geometry, part.texture.tile ?? 20, part.texture.project);
       node = new THREE.Mesh(geometry, custom(part) ?? material(part.tone ?? "mid", part.lit));
       if (part.kind === "plane") part.edges = part.edges ?? false;
+      if (part.kind === "heightfield" || part.kind === "ribbon") part.edges = false;
+      if (part.kind === "ribbon") node.frustumCulled = false;
       node.castShadow = part.kind !== "plane" && !part.glass;
       if (part.cut && section) node.material = cutMaterial(node.material, section, part.cut, part.hatch);
       node.receiveShadow = true;
@@ -214,7 +218,17 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   }
   const box = new THREE.Box3();
   scene.updateMatrixWorld(true); // parents' transforms must be current, or grouped parts are boxed at their local positions
-  scene.traverse((node) => { if ((node.isMesh || node.isLineSegments) && !node.userData.effect && !node.parent?.userData.effect) box.expandByObject(node, false); });
+  // `fit: "parts"` frames each part's own box (tight for wide, low figures with a few tall parts); default frames the scene box.
+  const corners = [];
+  scene.traverse((node) => {
+    if (!((node.isMesh || node.isLineSegments) && !node.userData.effect && !node.parent?.userData.effect)) return;
+    box.expandByObject(node, false);
+    if (spec.fit !== "parts" || node.parent?.isMesh) return;
+    if (node.isInstancedMesh) { const b = new THREE.Box3().setFromObject(node); for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) corners.push(new THREE.Vector3(x, y, z)); return; }
+    node.geometry.computeBoundingBox();
+    const b = node.geometry.boundingBox;
+    for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) corners.push(new THREE.Vector3(x, y, z).applyMatrix4(node.matrixWorld));
+  });
   const centre = box.getCenter(new THREE.Vector3());
   const radius = box.getSize(new THREE.Vector3()).length() / 2 || 100;
   key.position.copy(centre).add(new THREE.Vector3(-0.5, -0.9, 1.6).multiplyScalar(radius * 2));
@@ -245,7 +259,8 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     renderer.setSize(width, height, false);
     const inverse = camera.matrixWorldInverse;
     const local = new THREE.Box3();
-    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) local.expandByPoint(new THREE.Vector3(x, y, z).applyMatrix4(inverse));
+    if (corners.length) for (const c of corners) local.expandByPoint(c.clone().applyMatrix4(inverse));
+    else for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) local.expandByPoint(new THREE.Vector3(x, y, z).applyMatrix4(inverse));
     const pad = 1 + (spec.pad ?? 0.12);
     const w = (local.max.x - local.min.x) * pad, h = (local.max.y - local.min.y) * pad;
     const aspect = width / height;
@@ -262,6 +277,10 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     THREE, scene, camera, renderer, parts, screens, shaders, colors, theme, RAMPS, rampColor,
     /** Repaints a part's vertex colours: fn(x, y, z, i) in its own frame returns t (0..1 on `ramp`) or a Color. */
     paint: (id, fn, ramp) => paintVertices(parts.get(id), fn, ramp),
+    /** Lifts a heightfield part: fn(x, y) in its own frame returns z. */
+    heights: (id, fn) => setHeights(parts.get(id), fn),
+    /** Lays a ribbon part along polylines [{ points: [[x, y, z], ...], closed }] (its scene width unless given). */
+    ribbon: (id, lines, width) => setRibbon(parts.get(id), lines, width ?? spec.parts.find((p) => p.id === id).width),
     /** Sets uTime on every library shader (freeze it under reduced motion by not calling this). */
     time: (t) => { for (const s of shaders.values()) if (s.uniforms.uTime) s.uniforms.uTime.value = t; },
     render: () => renderer.render(scene, camera),

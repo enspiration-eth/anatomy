@@ -4,6 +4,20 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 
 ## Unreleased (three.js fork)
 
+### Marching squares figure, live heightfields and contour ribbons
+
+- `examples/marching-squares-3d`: marching squares as a contour-survey bench.
+  - **Field and samples:** a relief tank holds a metaball field as terrain, painted by its value against the iso-value. The water level is the iso-value. A survey pin stands at every grid corner.
+  - **The march:** a gantry carries a four-probe head cell by cell. Each probe's lamp is one corner bit (TL 8, TR 4, BR 2, BL 1). A centre bob reads the corners' mean, which settles saddle cases 5 and 10.
+  - **Lookup and output:** a printer's type case holds the 16 stencils, and the current one lifts. A pen plotter draws the march on a drafting sheet. The stitched contour lies on the water as a ribbon whose dashes flow along each loop. An inspector screen shows the arithmetic: bits, case and t = (iso − a)/(b − a) on each crossed edge.
+  - **Controls:** drag or add sources, iso slider, 8/16/32 grid, step-through, interpolation on/off.
+  - **Model:** `march.mjs` is pure and tested. The tests cover the case table on every crossed edge, saddle readings, interpolation exact on a linear field, closed contours, shared crossings, and convergence on a circle.
+- Kit:
+  - `heightfield` kind (`fig.heights`): a terrain sheet the live code lifts.
+  - `ribbon` kind (`fig.ribbon`): flat mitred strips along live polylines, with arc-length uv.
+  - `contour` shader and `field` ramp.
+  - `fit: "parts"`: frames each part's own box, for wide, low figures.
+
 ### Body electromagnetic fields figure, implicit surfaces
 
 - `examples/biofield-3d`: a smooth, high-poly (about 300k triangles) human body with only its measured fields:

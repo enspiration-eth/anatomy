@@ -21,6 +21,8 @@ export const RAMPS = {
   // Blood by oxygen saturation, 60% (dark, purplish) to 100% (bright red); never blue, which is a convention.
   // Body-surface potential: negative blue, zero the skin tone, positive red (diverging, neutral reads as skin).
   potential: [[0, "#2a55c8"], [0.35, "#a3b4dc"], [0.5, "#f0b48c"], [0.65, "#ee9478"], [1, "#c8322a"]],
+  // A scalar field against its iso-value: cool below (outside), warm above (inside), with the step at t = 0.5.
+  field: [[0, "#18233a"], [0.3, "#2e5a78"], [0.49, "#62a7b8"], [0.51, "#e39a34"], [0.75, "#f3c46a"], [1, "#fff2cf"]],
   oxygen: [[0, "#3c1838"], [0.4, "#6a1a34"], [0.75, "#a51f2c"], [1, "#d8322c"]],
   // A neutral grey ramp, for tone gradients that are not data.
   tone: [[0, "#2a2a2a"], [1, "#d4d4d4"]],
@@ -451,6 +453,24 @@ void main() {
 }`,
     });
   },
+  // A contour line on a flat ribbon: soft across its width, with dashes that run along the stitched polyline
+  // (uv.x is arc length / 100), so the reader sees which way each loop was joined and that it closes.
+  contour({ uniforms, theme }) {
+    const dark = theme === "dark";
+    return new THREE.ShaderMaterial({
+      uniforms: uniformsOf({ uTime: 0, uLevel: 1, uSpeed: 0.4, uDash: 3, uColor: "#ffd27a" }, uniforms),
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: dark ? THREE.AdditiveBlending : THREE.NormalBlending,
+      vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: `uniform float uTime, uLevel, uSpeed, uDash; uniform vec3 uColor; varying vec2 vUv;
+${NOISE}${DITHER}
+void main() {
+  float across = 1.0 - smoothstep(0.55, 1.0, abs(vUv.y * 2.0 - 1.0));
+  float dash = 0.55 + 0.45 * smoothstep(0.2, 0.8, fract(vUv.x * uDash - uTime * uSpeed));
+  float k = clamp(uLevel, 0.0, 1.0) * across * dash;
+  gl_FragColor = vec4(uColor * ${dark ? "1.25" : "0.7"} + dither(gl_FragCoord.xy), k);
+}`,
+    });
+  },
   // Cherenkov light: the blue glow of water round a running core, where charged particles outrun light in water.
   // On a cylinder or sphere filling the core; brightest looking through the most water; uLevel is reactor power.
   cherenkov({ uniforms, theme }) {
@@ -643,4 +663,51 @@ export function implicitGeometry(part) {
   g.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
   g.setIndex(count > 65535 ? new THREE.Uint32BufferAttribute(index, 1) : new THREE.Uint16BufferAttribute(index, 1));
   return g;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Live sheets and strips: a heightfield whose heights the live code sets, and flat ribbons along polylines.
+/** Lifts a heightfield: fn(x, y) in the part's frame returns z. Recomputes normals. */
+export function setHeights(mesh, fn) {
+  const pos = mesh.geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, fn(pos.getX(i), pos.getY(i)));
+  pos.needsUpdate = true;
+  mesh.geometry.computeVertexNormals();
+  mesh.geometry.computeBoundingSphere();
+}
+/**
+ * Lays flat strips (normal +z) along polylines: lines = [{ points: [[x, y, z], ...], closed }].
+ * uv.x is arc length / 100 along each line, uv.y runs 0..1 across. Mitred at joints, so closed loops have no seam.
+ */
+export function setRibbon(mesh, lines, width) {
+  const half = width / 2, pos = [], uv = [], index = [];
+  for (const line of lines) {
+    const pts = line.points, n = pts.length;
+    if (n < 2) continue;
+    const closed = !!line.closed, base = pos.length / 3;
+    let s = 0;
+    const count = closed ? n + 1 : n;
+    for (let k = 0; k < count; k++) {
+      const i = k % n, p = pts[i];
+      const prev = pts[closed ? (i - 1 + n) % n : Math.max(0, i - 1)], next = pts[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+      let tx = next[0] - prev[0], ty = next[1] - prev[1];
+      const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+      // mitre: scale the offset so the strip keeps its width round a bend (capped)
+      let m = 1;
+      if (k > 0 && k < count - 1 || closed) {
+        const ax = p[0] - prev[0], ay = p[1] - prev[1], al = Math.hypot(ax, ay) || 1;
+        const cos = (ax / al) * tx + (ay / al) * ty;
+        m = 1 / Math.max(0.5, cos);
+      }
+      if (k > 0) { const q = pts[(k - 1) % n]; s += Math.hypot(p[0] - q[0], p[1] - q[1]); }
+      pos.push(p[0] - ty * half * m, p[1] + tx * half * m, p[2], p[0] + ty * half * m, p[1] - tx * half * m, p[2]);
+      uv.push(s / 100, 0, s / 100, 1);
+      if (k > 0) { const a = base + (k - 1) * 2; index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+  }
+  const g = mesh.geometry;
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos.length ? pos : [0, 0, 0, 0, 0, 0, 0, 0, 0], 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv.length ? uv : [0, 0, 0, 0, 0, 0], 2));
+  g.setIndex(index.length ? index : [0, 1, 2]);
+  g.computeBoundingSphere();
 }

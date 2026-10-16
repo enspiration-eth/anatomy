@@ -17,6 +17,8 @@ export const KINDS = {
   instances: { need: ["shape", "items"] }, // one geometry drawn many times: shape box|cylinder|sphere, items [[x, y, z, rz?], ...]
   plane: { need: ["size"] }, // size [w, h] in the part's xy plane; optional screen: [px w, px h] for a canvas texture
   implicit: { need: ["shapes"] }, // a smooth SDF body: shapes [["cone", a, b, ra, rb, k?] | ["ellipsoid", c, [rx, ry, rz], k?]], cell (mm), blend, relax
+  heightfield: { need: ["size"] }, // a terrain sheet: size [w, d], grid (segments per side); live code lifts it with fig.heights(id, fn)
+  ribbon: { need: ["width"] }, // flat strips along live polylines (contours, routes): width, max (segments); live code sets them with fig.ribbon(id, lines)
   group: { need: [] },
 };
 
@@ -37,15 +39,16 @@ export const SHADER_NAMES = {
   cherenkov: { effect: true, uniforms: ["uTime", "uLevel", "uColor"] },
   steam: { effect: true, uniforms: ["uTime", "uLevel", "uRise"] },
   fieldline: { effect: true, uniforms: ["uTime", "uLevel", "uSpeed", "uDash", "uColor"] },
+  contour: { effect: true, uniforms: ["uTime", "uLevel", "uSpeed", "uDash", "uColor"] },
 };
-export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "activation", "oxygen", "potential", "tone"];
+export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "activation", "oxygen", "potential", "field", "tone"];
 const MATERIAL_RANGES = { metal: [0, 1], rough: [0, 1], transmission: [0, 1], ior: [1, 2.5], thickness: [0, 500], clearcoat: [0, 1], clearcoatRough: [0, 1], sheen: [0, 1], iridescence: [0, 1], tintDistance: [0.1, 1e6] };
 const isHex = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const isUniform = (value) => isNum(value) || isHex(value) || (Array.isArray(value) && (value.length === 2 || value.length === 3) && value.every(isNum));
 
 /** True when a part is a visual effect (a plume, a glow) and so not a solid. */
 export const isEffect = (part) => !!(part.shader && SHADER_NAMES[part.shader.name]?.effect);
-const isSolid = (part) => !["group", "ticks", "rail", "plane", "disc"].includes(part.kind) && !isEffect(part);
+const isSolid = (part) => !["group", "ticks", "rail", "plane", "disc", "ribbon"].includes(part.kind) && !isEffect(part);
 
 function lookProblems(part, bad, name) {
   const t = part.texture;
@@ -84,6 +87,7 @@ function lookProblems(part, bad, name) {
       if (sh.name === "flow" && part.kind !== "tube") bad(`${name}: flow runs along a tube (uv.x along its length)`);
       if (sh.name === "cherenkov" && !["cylinder", "sphere"].includes(part.kind)) bad(`${name}: cherenkov fills a cylinder or sphere`);
       if (sh.name === "fieldline" && part.kind !== "tube") bad(`${name}: a fieldline runs along a tube`);
+      if (sh.name === "contour" && part.kind !== "ribbon") bad(`${name}: a contour shader runs along a ribbon`);
       if (sh.name === "steam" && !(part.kind === "cylinder" && part.open)) bad(`${name}: steam needs an open cylinder (open: true)`);
       if ((sh.name === "ripple" || sh.name === "caustics") && part.kind !== "plane") bad(`${name}: a ${sh.name} shader goes on a plane`);
     }
@@ -121,6 +125,15 @@ function lookProblems(part, bad, name) {
     if (part.cell !== undefined && !(isNum(part.cell) && part.cell > 0)) bad(`${name}: cell must be a positive size`);
     if (part.relax !== undefined && !(Number.isInteger(part.relax) && part.relax >= 0 && part.relax <= 6)) bad(`${name}: relax is 0 to 6 passes`);
   }
+  if (part.kind === "heightfield") {
+    if (!(isVec(part.size, 2) && part.size.every((v) => v > 0))) bad(`${name}: heightfield size is [w, d]`);
+    if (part.grid !== undefined && !(Number.isInteger(part.grid) && part.grid >= 2 && part.grid <= 512)) bad(`${name}: grid is 2 to 512 segments per side`);
+    if (part.edges === true) bad(`${name}: a heightfield moves, so it has no fixed edge lines (drop edges)`);
+  }
+  if (part.kind === "ribbon") {
+    if (!(isNum(part.width) && part.width > 0)) bad(`${name}: ribbon width must be positive`);
+    if (part.max !== undefined && !(Number.isInteger(part.max) && part.max >= 1 && part.max <= 200000)) bad(`${name}: ribbon max is 1 to 200000 segments`);
+  }
   if (part.kind === "instances") {
     if (!["box", "cylinder", "sphere"].includes(part.shape)) bad(`${name}: instances shape must be box, cylinder or sphere`);
     if (part.shape === "box" && !(isVec(part.size, 3) && part.size.every((v) => v > 0))) bad(`${name}: box instances need size [w, d, h]`);
@@ -155,6 +168,7 @@ export function validateScene(spec) {
   const camera = spec.camera ?? {};
   if (!isNum(camera.azimuth) || camera.azimuth < 0 || camera.azimuth > 90) bad("camera.azimuth must be a number from 0 to 90");
   if (!isNum(camera.elevation) || camera.elevation < 10 || camera.elevation > 80) bad("camera.elevation must be a number from 10 to 80");
+  if (spec.fit !== undefined && spec.fit !== "parts" && spec.fit !== "box") bad(`fit must be "box" (default) or "parts"`);
   if (!Array.isArray(spec.parts) || spec.parts.length === 0) return [...problems, "parts must be a non-empty array"];
   const ids = new Map();
   let solids = 0;

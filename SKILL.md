@@ -26,6 +26,7 @@ Every SVG example has a three.js port beside it, `examples/<name>-3d/` (`scene.m
 - `ripple-tank-3d/`: water and caustics as two shaders driven by the same dispersion and optics model as the SVG figure (`ripple-tank/model.mjs`, inlined with `extra`).
 - `test-rig-3d/`: springs rebuilt per frame on guide rods, a glass button that swells and leans by a shear matrix, a gauge riding the carriage.
 - `spot-plate-3d/`: six pairs of drops rebuilt as one distance-field heightfield per pair; a fan whose blades stop at their gaps.
+- `marching-squares-3d/` (Hero, 152 solids): an algorithm as a machine. A metaball field is a live `heightfield` in a tank, the iso-value is the water level, a four-probe gantry reads the corner bits, a type case holds the 16 stencils and a plotter draws the result. The pure model `march.mjs` is shared by the page and the tests.
 - `turning-dial-3d/` (Hero): a dial you drag, a hand with three-hinge fingers, and a pod that breaks off as a free body.
 - `examples/dial-indicator/` is the smallest SVG original of the same figure, about 300 lines in all.
 - `examples/desk-computer/` is framework-free SVG: a desk computer with a keyboard you can type on. The typed line appears on a CRT screen drawn in the plane of the case front, and the picture collapses to a line and a dot when you switch it off. It has about 85 solids and 850 paths.
@@ -50,6 +51,7 @@ The test rig is the quality bar for the drawing itself. The Raptor is the bar fo
 | A separable blur (49 × 49 taps vs 49 + 49) | A bed-of-nails stamp beside two combs on rails |
 | A spring that presses and leans | A test rig with springs, a probe and a dial gauge |
 | A height profile | A profile (contour) gauge pressed against the edge |
+| Marching squares: threshold, corner bits, a 16-case lookup | A relief tank whose water level is the iso-value, a four-probe gantry and a printer's type case of stencils |
 | Light that depends on facing | A small photo studio: key and fill lamps around a turntable |
 
 Two ways this fails, both seen in practice:

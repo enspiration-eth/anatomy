@@ -26,6 +26,7 @@ export const scene = {
   width: 600, height: 380,   // aspect of the stage
   camera: { azimuth: 42, elevation: 30 },
   pad: 0.12,                 // extra margin around the fitted bounds (may be negative)
+  fit: "box",                // "box" frames the scene's box; "parts" frames each part's own box (tighter for wide, low figures with a few tall parts)
   parts: [ /* … */ ],
 };
 ```
@@ -55,6 +56,8 @@ World units are about 1 px of the real thing; x and y on the floor, z up. A part
 | `disc` | `r`: a flat disc whose uv spans the face (dial faces) |
 | `instances` | `shape`, its size fields, `items: [[x, y, z, rz?], …]`: one geometry drawn many times, counted once |
 | `plane` | `size: [w, h]`; with `screen: [px, px]` it carries a canvas texture, at `fig.screens.get(id)` (`ctx`, `canvas`, `update()`) |
+| `heightfield` | `size: [w, d]`, `grid` (segments per side): a terrain sheet; live code lifts it with `fig.heights(id, (x, y) => z)` and colours it with `fig.paint` (no edge lines) |
+| `ribbon` | `width`, `max`: flat strips along live polylines, set with `fig.ribbon(id, [{ points, closed }])`; uv.x is arc length / 100 (pair with the `contour` shader); not a solid |
 | `group` | none: an assembly that moves; give its parts `parent` |
 
 Any part may also take `color` / `emissive` (`#rrggbb`, with `glow`), `metal`, `rough`, `opacity`, `glass: true`, and `scale`. A scene may add `lights: [{ at, intensity, distance }]` (point lights, for interiors). Box corners round in the plane of the box's two largest sides.

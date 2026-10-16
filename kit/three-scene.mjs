@@ -25,7 +25,7 @@ export const KINDS = {
 /** Procedural textures (kit/three-looks.js TEXTURES) and the options each accepts. */
 export const TEXTURE_KINDS = {
   brushed: ["color", "seed"], knurl: ["pitch"], dial: ["count", "every", "from", "step", "ring", "font", "reverse"],
-  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], pcb: ["seed"], fiber: ["seed", "color", "waves"], concrete: ["seed"], paper: ["seed"], wood: ["seed", "color", "rings"], glyph: ["text", "ink", "font"],
+  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], armor: ["seed", "color", "panels", "grime", "rivets"], pcb: ["seed"], fiber: ["seed", "color", "waves"], concrete: ["seed"], paper: ["seed"], wood: ["seed", "color", "rings"], glyph: ["text", "ink", "font"],
 };
 const TEXTURE_COMMON = ["kind", "repeat", "project", "tile", "size"];
 /** The shader library (kit/three-looks.js SHADERS), whether each is an effect (not a solid) and the uniforms it takes. */
@@ -145,7 +145,8 @@ function lookProblems(part, bad, name) {
   if (part.kind === "extrude") {
     if (!(Array.isArray(part.outline) && part.outline.length >= 3 && part.outline.every((p) => isVec(p, 2)))) bad(`${name}: outline must be at least three [a, b] points`);
     if (!(isNum(part.depth) && part.depth > 0)) bad(`${name}: depth must be positive`);
-    if (part.plane !== undefined && !["xy", "xz"].includes(part.plane)) bad(`${name}: plane must be "xy" or "xz"`);
+    if (part.plane !== undefined && !["xy", "xz", "yz"].includes(part.plane)) bad(`${name}: plane must be "xy", "xz" or "yz"`);
+    if (part.bevel !== undefined && !(isNum(part.bevel) && part.bevel >= 0 && part.bevel * 2 < part.depth)) bad(`${name}: bevel must be at least 0 and less than half the depth`);
   }
   if (part.cut !== undefined && part.cut !== true && part.cut !== "solid") bad(`${name}: cut is true (hatched) or "solid" (filled volume)`);
   if (part.hatch !== undefined && !(part.cut === true && isHex(part.hatch))) bad(`${name}: hatch is a #rrggbb colour for a part with cut: true`);

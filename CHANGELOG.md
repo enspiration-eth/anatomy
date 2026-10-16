@@ -2,6 +2,11 @@
 
 All notable changes to Anatomy are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); entries from before the first release are dated.
 
+## Unreleased: AT-AT second take
+
+- Fig 11 rebuilt for fidelity: hexagonal beveled hull with rear ribs, side hatches and roof greebles; a wedge head with cheek pods, chin lasers and viewports; a corrugated neck; hip drums with pistons, knee wheels and ribbed footpads; snow buildup. The department card now places itself clear of the walker and docks on phones.
+- Kit: extrude `bevel` and `plane: "yz"`, edge lines clipped by the section on cut parts, and an `armor` texture (panel lines, rivets, grime, chips; map, roughness and bump).
+
 ## Unreleased (three.js fork)
 
 ### All-terrain walker figure, orbit camera, live sections, department cards

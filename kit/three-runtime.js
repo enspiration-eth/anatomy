@@ -86,7 +86,11 @@ function geometryOf(part) {
       // An outline in the part's xy plane (plane "xy", extruded up z) or xz plane (plane "xz", extruded along +y).
       const shape = new THREE.Shape(part.outline.map(([a, b]) => new THREE.Vector2(a, b)));
       for (const hole of part.holes ?? []) shape.holes.push(new THREE.Path(hole.map(([a, b]) => new THREE.Vector2(a, b))));
-      const g = new THREE.ExtrudeGeometry(shape, { depth: part.depth, bevelEnabled: false, curveSegments: 24 });
+      // bevel: rounded-off edges of that size; the outline is inset by it first, so the part keeps its drawn size
+      const b = part.bevel ?? 0;
+      const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.01, part.depth - 2 * b), bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 2, curveSegments: 24 });
+      if (b) g.translate(0, 0, b);
+      if (part.plane === "yz") return g.applyMatrix4(new THREE.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1)); // (a, b) = (y, z), extruded along +x
       return part.plane === "xz" ? g.rotateX(Math.PI / 2).translate(0, part.depth, 0) : g;
     }
     case "implicit": return implicitGeometry(part);
@@ -195,6 +199,8 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
       if (part.shader) node.castShadow = false;
       if (isEffect(part)) { node.userData.effect = true; node.renderOrder = 10; }
       if (part.edges !== false && !part.cut) node.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, part.edgeAngle ?? 28), edgeMaterial));
+      // a cut part keeps its edge lines when asked (edges: true): they are clipped by the same plane as the part
+      else if (part.edges === true && part.cut && section) { const em = edgeMaterial.clone(); em.clippingPlanes = [section]; node.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, part.edgeAngle ?? 28), em)); }
     }
     node.name = part.id;
     if (part.at) node.position.set(...part.at);

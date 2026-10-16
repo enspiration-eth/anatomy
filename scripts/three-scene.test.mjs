@@ -198,7 +198,8 @@ test("the Neuralink figure is a valid hero whose threads miss the vessels and st
 test("validates extrusions and sections", () => {
   assert.equal(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0], [0, 4]], depth: 2, cut: true }], { section: { axis: "y", at: 0 } }), "");
   assert.match(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0]], depth: 2 }]), /at least three/);
-  assert.match(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0], [0, 4]], depth: 2, plane: "yz" }]), /plane must be/);
+  assert.match(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0], [0, 4]], depth: 2, plane: "zx" }]), /plane must be/);
+  assert.match(problemsOf([{ id: "e", kind: "extrude", outline: [[0, 0], [4, 0], [0, 4]], depth: 2, bevel: 1 }]), /bevel must be/);
   assert.match(problemsOf([{ id: "c", kind: "sphere", r: 2, cut: true }]), /no section/);
   assert.match(problemsOf([{ id: "c", kind: "plane", size: [2, 2], cut: true }], { section: { axis: "y", at: 0 } }), /only solid/);
   assert.match(problemsOf([], { section: { axis: "w", at: 0 } }), /section must be/);
@@ -420,4 +421,8 @@ test("the walker: valid hero; IK lands every foot; planted feet hold still; one 
   assert.ok(S.DEPTS.length >= 7 && S.DEPTS.every((d) => d.fn && d.canon && S.scene.parts.some((p) => d.match.test(p.id))));
   assert.ok(S.SOURCES.every(([, , u]) => u.startsWith("https://")));
   execFileSync(process.execPath, ["examples/at-at-3d/build.mjs", "--check"]);
+});
+
+test("extrude bevel, yz plane and armor texture validate", () => {
+  assert.equal(problemsOf([{ id: "p", kind: "extrude", plane: "yz", bevel: 3, depth: 40, outline: [[0, 0], [50, 0], [50, 30], [0, 30]], texture: { kind: "armor", seed: 2 } }]), "");
 });

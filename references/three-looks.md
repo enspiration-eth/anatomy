@@ -371,3 +371,5 @@ Use these when the subject is an algorithm over a field: contouring, thresholds,
   third frame, and paint it from its own height so the hollows read blue. Scroll the footprints with the ground
   speed and age them out with an exponential fill. With IK, a planted foot moves back at exactly the ground
   speed, so it never slides. Test that.
+
+- `armor` texture: `{ kind: "armor", seed, color, panels, grime, rivets, project: "box", tile }`. It adds panel lines, rivets, grime streaks and chipped edges as colour, roughness and bump maps. Use it on hard-surface machines. Extrude `bevel: n` rounds the edges (the outline is inset first, so the size stays the same), and `plane: "yz"` extrudes along +x.

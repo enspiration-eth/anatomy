@@ -142,19 +142,37 @@ function openCard(d) {
   if (status) status.textContent = d.name + ": " + d.fn;
   placeCard(); runner.kick();
 }
-function closeCard() { if (!open) return; highlight(open.id, false); if (hover && hover.id === open.id) highlight(hover.id, true); open = null; card.hidden = true; overlay.style.display = "none"; deptBtns.forEach((b) => b.setAttribute("aria-pressed", "false")); fig.render(); }
+function closeCard() { if (!open) return; cardAt = null; highlight(open.id, false); if (hover && hover.id === open.id) highlight(hover.id, true); open = null; card.hidden = true; overlay.style.display = "none"; deptBtns.forEach((b) => b.setAttribute("aria-pressed", "false")); fig.render(); }
 card.addEventListener("pointerdown", (e) => e.stopPropagation());
-const av = new THREE.Vector3();
+const av = new THREE.Vector3(), bv = new THREE.Vector3(); let cardAt = null;
 function placeCard() {
   if (!open) return;
   const W = stage.clientWidth, H = fig.renderer.domElement.clientHeight;
   av.set(...open.anchor); body.localToWorld(av); av.project(fig.camera);
   const ax = (av.x + 1) / 2 * W, ay = (1 - av.y) / 2 * H;
-  const cw = Math.min(280, W - 24), ch = card.offsetHeight || 160, left = ax > W / 2;
-  const cx = W < 520 ? 12 : left ? 16 : W - cw - 16, cy = W < 520 ? H - ch - 8 : Math.min(H - ch - 12, Math.max(12, ay - ch / 2));
+  const cw = Math.min(250, W - 24), ch = card.offsetHeight || 160;
+  // the walker's box on screen, so the card sits clear of the subject when it can
+  const boxOf = (xs, zs) => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const x of xs) for (const y of [-150, 150]) for (const z of zs) { bv.set(x, y, z); body.localToWorld(bv); bv.project(fig.camera);
+      const sx = (bv.x + 1) / 2 * W, sy = (1 - bv.y) / 2 * H; x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); } return [x0, y0, x1, y1]; };
+  const hullBox = boxOf([-230, 560], [380, 615]), legBox = boxOf([-230, 230], [0, 380]);
+  const [bx0, by0, bx1, by1] = hullBox;
+  const m = 14, cands = [];
+  for (const cx of [m, (W - cw) / 2, W - cw - m]) for (const cy of [m, (H - ch) / 2, H - ch - m]) cands.push([cx, cy]);
+  cands.push([Math.max(m, bx0 - cw - 24), clamp(ay - ch / 2, m, H - ch - m)], [Math.min(W - cw - m, bx1 + 24), clamp(ay - ch / 2, m, H - ch - m)]);
+  const ov = (cx, cy, [x0, y0, x1, y1]) => Math.max(0, Math.min(cx + cw, x1) - Math.max(cx, x0)) * Math.max(0, Math.min(cy + ch, y1) - Math.max(cy, y0));
+  const overlap = (cx, cy) => ov(cx, cy, hullBox) + 0.3 * ov(cx, cy, legBox);
+  let best = cands[0], score = Infinity;
+  for (const [cx, cy] of cands) { if (cx < 0 || cy < 0 || cx + cw > W || cy + ch > H + 1) continue; const sc = overlap(cx, cy) * 4 + Math.hypot(cx + cw / 2 - ax, cy + ch / 2 - ay) * 40; if (sc < score) { score = sc; best = [cx, cy]; } }
+  // hold still unless the better spot is clearly better, so the card does not jitter as the walker moves
+  if (cardAt && Math.abs(cardAt[0] - best[0]) + Math.abs(cardAt[1] - best[1]) > 1) { const [ox, oy] = cardAt, old = overlap(ox, oy) * 4 + Math.hypot(ox + cw / 2 - ax, oy + ch / 2 - ay) * 40; if (old < score * 1.25 + 2000) best = cardAt; }
+  card.style.maxHeight = (H - 16) + "px"; card.style.overflowY = "auto";
+  if (W < 520) best = [12, Math.max(8, H - ch - 8)];
+  cardAt = best;
+  const [cx, cy] = best;
   card.style.width = cw + "px"; card.style.left = cx + "px"; card.style.top = cy + "px";
   overlay.setAttribute("width", W); overlay.setAttribute("height", H); overlay.setAttribute("viewBox", "0 0 " + W + " " + H);
-  const ex = W < 520 ? Math.min(Math.max(ax, cx + 20), cx + cw - 20) : left ? cx + cw : cx, ey = W < 520 ? cy : Math.min(Math.max(ay, cy + 16), cy + ch - 16);
+  const ex = clamp(ax, cx, cx + cw), ey = clamp(ay, cy, cy + ch);
   lineEl.setAttribute("x1", ex); lineEl.setAttribute("y1", ey); lineEl.setAttribute("x2", ax); lineEl.setAttribute("y2", ay);
   dotEl.forEach((c) => { c.setAttribute("cx", ax); c.setAttribute("cy", ay); });
 }
@@ -174,7 +192,7 @@ stage.addEventListener("pointerup", (e) => {
 });
 stage.addEventListener("pointerleave", () => { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = null; runner.kick(); });
 stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 0.6, 3.2); applyView(); runner.kick(); }, { passive: false });
-const setView = (k) => { if (k === "side") { az = 0; el = 3; zoom = 1.55; } else if (k === "front") { az = 90; el = 8; zoom = 1.3; } else { az = 30; el = 16; zoom = 1.15; } applyView(); };
+const setView = (k) => { if (k === "side") { az = 0; el = 3; zoom = 1.25; } else if (k === "front") { az = 90; el = 8; zoom = 1.3; } else { az = 30; el = 16; zoom = 1.15; } applyView(); };
 viewBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); setView(b.dataset.view); runner.kick(); }));
 deptBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); const d = DEPTS.find((q) => q.id === b.dataset.dept); if (open && open.id === d.id) closeCard(); else openCard(d); }));
 sliceBtn?.addEventListener("click", () => { tour.touch(); sliceOn = !sliceOn; applySlice(); runner.kick(); });
@@ -227,7 +245,7 @@ const css = `.at-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;marg
 .at-ctl button{padding:5px 9px;border:1px solid var(--anatomy-mid);background:transparent;color:var(--anatomy-muted);font:inherit;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
 .at-ctl button[aria-pressed="true"]{color:var(--anatomy-strong);border-color:var(--anatomy-strong)}.at-ctl input{width:150px}.at-ctl .at-gap{width:10px}
 .atat-leader{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}.atat-leader line{stroke:var(--anatomy-strong);stroke-width:1.2}.atat-leader circle{fill:var(--anatomy-strong)}.atat-leader circle.ring{fill:none;stroke:var(--anatomy-strong);stroke-width:1;opacity:.6}
-.atat-card{position:absolute;z-index:3;box-sizing:border-box;padding:12px 14px 10px;background:var(--anatomy-card,var(--anatomy-page));border:1px solid var(--anatomy-strong);color:var(--anatomy-muted);font:11px/1.55 var(--anatomy-mono);box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.atat-card{position:absolute;z-index:3;box-sizing:border-box;padding:10px 12px 8px;font-size:10.5px!important;background:var(--anatomy-card,var(--anatomy-page));border:1px solid var(--anatomy-strong);color:var(--anatomy-muted);font:11px/1.55 var(--anatomy-mono);box-shadow:0 8px 28px rgba(0,0,0,.35)}
 .atat-card h3{margin:0 0 6px;font:600 13px/1.3 var(--anatomy-mono);color:var(--anatomy-strong);letter-spacing:.04em;text-transform:uppercase}
 .atat-card p{margin:0 0 6px}.atat-card .atat-k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin:0 0 2px}.atat-card .atat-canon{opacity:.85}.atat-card .atat-src{font-size:10px;opacity:.75}.atat-card a{color:inherit}
 .atat-x{position:absolute;right:6px;top:4px;border:0;background:transparent;color:var(--anatomy-strong);font:16px/1 var(--anatomy-mono);cursor:pointer;padding:4px}

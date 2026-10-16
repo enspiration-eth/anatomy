@@ -2,6 +2,9 @@
 
 All notable changes to Anatomy are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); entries from before the first release are dated.
 
+## AT-AT, fourth take: three body modules
+- The body is now three separate modules (front, centre, rear), each with its own lofted shell, a lining, walls leaning in toward the roof, and dark seams between them. Measured proportions are in the reference notes.
+
 ## Unreleased: AT-AT third take (reference-matched)
 
 - Fig 11 rebuilt to proportions measured from studio-scale replica photos: a 2 : 1 hull with near-vertical sides and an overhanging deck, slanted rear engine block, four armour plates a side with recessed panels; a faceted lofted head with round cheek discs, temple guns, a viewport slit and gimballed chin guns; a thick ribbed neck with cables; legs at the measured 1.6 : 1 thigh to shin with exposed struts, cylindrical knees, ribbed shins, curved ankle cages and ridged round feet. Fixed inside-out foot lathes.

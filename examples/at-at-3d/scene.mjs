@@ -8,13 +8,14 @@ import { assertScene } from "../../kit/three-scene.mjs";
 export const L1 = 165, L2 = 104;            // thigh and shin (measured 1.6 : 1)
 export const HZ = 326;                       // hip joint height, just under the belly
 export const ANKLE = 75;                     // ankle joint above the ground in stance (cage + ridged foot)
-export const LEGS = [["rr", -82, -42, 0], ["fr", 86, -42, 0.25], ["rl", -82, 42, 0.5], ["fl", 86, 42, 0.75]];
+export const LEGS = [["rr", -74, -42, 0], ["fr", 100, -42, 0.25], ["rl", -74, 42, 0.5], ["fl", 100, 42, 0.75]];
 export const GAIT = { period: 5.2, duty: 0.75, stride: 132, lift: 32 };
 export const speed = GAIT.stride / (GAIT.duty * GAIT.period);
 export const GROUND = { w: 2400, d: 2800, grid: 220 };
 export const SNOW = 900;
 export const UNIT_M = 0.045;
-export const BODY = { x: [-149, 149], z: [335, 498] };
+export const HIP_R = -74, HIP_F = 100;     // hips: rear module and front module (measured 26 % and 16 % in from the ends)
+export const BODY = { x: [-152, 159], z: [326, 498] };
 const parts = [];
 const ARMOR = (seed, tile = 150, panels = 5) => ({ kind: "armor", seed, panels, project: "box", tile, color: "#c6c9cc", grime: 0.9 });
 const add = (p) => { const q = p.kind === "group" ? { ...p } : { cut: true, hatch: "#b4bcc6", ...p }; parts.push(q); return q; };
@@ -29,8 +30,8 @@ const flakes = []; for (let i = 0; i < SNOW; i++) flakes.push([(rnd() - 0.5) * G
 plain({ id: "flakes", kind: "instances", shape: "sphere", r: 1.5, segments: 5, items: flakes, color: "#f4f8ff", rough: 0.6, edges: false });
 
 plain({ id: "body", kind: "group", at: [0, 0, 0] });
-// the hull is drawn at 330 long and squeezed to the measured 2 : 1 length to height (SX) as it is added
-const SX = 0.9;
+// SX squeezes hull parts along x as they are added (1: drawn at the measured size)
+const SX = 1;
 function squeeze(p) {
   const q = { ...p };
   if (q.at) q.at = [q.at[0] * SX, q.at[1], q.at[2]];
@@ -44,81 +45,113 @@ function squeeze(p) {
 const B = (p) => add({ parent: "body", ...squeeze(p) });
 const SNOWC = "#f2f6fb", snow = (p) => ({ color: SNOWC, rough: 0.95, metal: 0, hatch: "#e8eef5", ...p });
 
-// ---- hull: near-vertical sides, widest high up, tapering to the belly; a chamfered roof under an overhanging deck
-const OUT = [[-44, 335], [44, 335], [56, 352], [60, 468], [50, 486], [-50, 486], [-60, 468], [-56, 352]];
-const IN = [[-38, 342], [38, 342], [49, 356], [53, 464], [45, 479], [-45, 479], [-53, 464], [-49, 356]];
-B({ id: "hull-shell", kind: "extrude", plane: "yz", outline: OUT, holes: [IN], depth: 300, bevel: 2, at: [-150, 0, 0], ...hull(31) });
-B({ id: "hull-front", kind: "extrude", plane: "yz", outline: OUT, depth: 12, bevel: 2, at: [150, 0, 0], ...hull(32) });
-B({ id: "hull-rear", kind: "extrude", plane: "yz", outline: OUT, depth: 12, bevel: 2, at: [-162, 0, 0], ...hull(33) });
-// top deck: a slab overhanging the hull at the front, rear and both sides, chamfered at the ends
-B({ id: "deck", kind: "extrude", plane: "xz", outline: [[-176, 484], [178, 484], [170, 497], [-168, 497]], depth: 126, bevel: 2, at: [0, -63, 0], ...hull(34) });
-B({ id: "deck-snow", kind: "box", size: [320, 112, 2.5], r: 1.2, at: [-2, 0, 496.5], ...snow({}) });
-B({ id: "deck-hatch", kind: "cylinder", r: 12, h: 3, segments: 32, at: [96, 18, 497], color: GREY_D, metal: 0.4 });
-for (let k = 0; k < 6; k++) B({ id: `deck-vent-${k}`, kind: "box", size: [10, 30, 3], r: 1, at: [-120 + k * 15, -26, 497], color: DARK, rough: 0.8 });
-for (let k = 0; k < 4; k++) B({ id: `deck-box-${k}`, kind: "box", size: [18 + k * 5, 12, 4], r: 1.5, at: [10 + k * 30, -34 + (k % 2) * 60, 497], color: GREY_D, texture: ARMOR(35 + k, 100), metal: 0.4 });
-// front face: a recessed upper frame, a slatted chin block where the neck leaves, low on the face
-B({ id: "front-frame", kind: "box", size: [6, 96, 58], r: 2, at: [165, 0, 418], color: GREY_D, texture: ARMOR(36, 100), metal: 0.35 });
-B({ id: "front-recess", kind: "box", size: [3, 78, 44], r: 1, at: [169, 0, 425], color: "#5d636b", rough: 0.75 });
-for (let k = 0; k < 4; k++) B({ id: `front-slat-${k}`, kind: "box", size: [4, 70, 4], at: [171, 0, 430 + k * 9], color: DARK });
-B({ id: "front-block", kind: "box", size: [14, 76, 64], r: 3, at: [168, 0, 322], ...hull(37) });
-// rear engine block, slanted, with vertical cooling ribs
-B({ id: "rear-block", kind: "extrude", plane: "xz", outline: [[-176, 350], [-162, 344], [-162, 472], [-178, 462], [-186, 376]], depth: 96, bevel: 2, at: [0, -48, 0], ...hull(38) });
-for (let k = 0; k < 9; k++) B({ id: `rear-rib-${k}`, kind: "box", size: [6, 5, 74], r: 1, at: [-187, -40 + k * 10, 382], rot: [0, -8, 0], color: GREY_D, metal: 0.4 });
-B({ id: "rear-hatch", kind: "box", size: [3, 54, 28], r: 1.5, at: [-190, 0, 352], color: DARK, rough: 0.7 });
+// ---- hull: three articulated modules, as on the studio miniature (measured from the side, rear-quarter and front views):
+// a short, lower, narrower FRONT module with a steeply raked upper face; the tallest CENTRE module under an overhanging
+// deck; a REAR module whose roof chamfers down to the tail under an overhanging brow. Each is a faceted lofted shell
+// (outer skin + inner lining, so the slice shows the walls), and dark seams separate them.
+// inward offset of a convex polygon (counter-clockwise)
+function inset(poly, t) {
+  const n = poly.length, lines = poly.map((p, i) => { const q = poly[(i + 1) % n], dx = q[0] - p[0], dz = q[1] - p[1], l = Math.hypot(dx, dz), nx = -dz / l, nz = dx / l; return [p[0] + nx * t, p[1] + nz * t, dx, dz]; });
+  return lines.map((L, i) => { const M = lines[(i - 1 + n) % n]; const det = M[2] * L[3] - M[3] * L[2]; const u = ((L[0] - M[0]) * L[3] - (L[1] - M[1]) * L[2]) / det; return [M[0] + M[2] * u, M[1] + M[3] * u]; });
+}
+// a module section: belly half-width, wall half-width at the lower chamfer and at the roof chamfer (the walls lean in
+// toward the roof: the measured front and rear views are trapezoids, wider at the belly), roof half-width; heights
+const sec = (wb, wlo, whi, wt, z0, z1, z2, z3) => [[-wb, z0], [wb, z0], [wlo, z1], [whi, z2], [wt, z3], [-wt, z3], [-whi, z2], [-wlo, z1]];
+const F_SEC = (z2, z3) => sec(42, 51, 51 - (z2 - 346) * 0.075, 51 - (z2 - 346) * 0.075 - 6, 334, 346, z2, z3);
+export const MODULES = {
+  front: { x: [88, 150], wall: [51, 346, 44.2, 436], st: [[88, F_SEC(436, 446)], [120, F_SEC(436, 446)], [150, F_SEC(402, 412)]] },
+  centre: { x: [-42, 81], wall: [62, 348, 52, 478], st: [[-42, sec(50, 62, 52, 46, 334, 348, 478, 490)], [81, sec(50, 62, 52, 46, 334, 348, 478, 490)]] },
+  rear: { x: [-150, -49], wall: [59, 349, 50, 472], st: [[-150, sec(46, 59, 53.5, 46, 338, 349, 422, 432)], [-104, sec(48, 59, 50, 44, 336, 349, 472, 484)], [-49, sec(48, 59, 50, 44, 336, 349, 472, 484)]] },
+};
+// the wall's half-width at height z, and its lean from vertical (degrees), for parts mounted on a module's side
+const wallY = (m, z) => { const [a, za, b, zb] = MODULES[m].wall; return a + ((b - a) * (z - za)) / (zb - za); };
+const lean = (m) => { const [a, za, b, zb] = MODULES[m].wall; return (Math.atan2(a - b, zb - za) * 180) / Math.PI; };
+// a part on the side s of module m, its bottom at z: pushed out to the wall (plus d) and leant with it
+const onSide = (m, s, z, d, p) => B({ ...p, at: [p.at[0], s * (wallY(m, z) + d), z], rot: [s * lean(m), 0, 0] });
+Object.entries(MODULES).forEach(([name, m], k) => {
+  const last = m.st.length - 1;
+  B({ id: `${name}-shell`, kind: "loft", sections: m.st, ...hull(31 + k * 7) });
+  B({ id: `${name}-lining`, kind: "loft", sections: m.st.map(([x, p], i) => [i === 0 ? x + 6 : i === last ? x - 6 : x, inset(p, 6)]), inside: true, color: "#7d848c", rough: 0.7 });
+});
+// seams: recessed dark collars in the gaps between modules
+B({ id: "seam-front", kind: "box", size: [7, 90, 100], r: 1, at: [84.5, 0, 338], color: "#2d3137", rough: 0.8 });
+B({ id: "seam-rear", kind: "box", size: [7, 104, 140], r: 1, at: [-45.5, 0, 338], color: "#2d3137", rough: 0.8 });
 
-// sides: four big armour plates per side with recessed inner panels, a troop door, vent slats, a belt ledge with snow
-const PANELS = [[-150, -86], [-82, -8], [-4, 72], [76, 150]];
+// centre: a deck with a lip, hatch, vents and boxes; two big side plates, a troop door, a louvre at the front edge
+B({ id: "deck", kind: "extrude", plane: "xz", outline: [[-46, 488], [85, 488], [82, 496], [-43, 496]], depth: 100, bevel: 2, at: [0, -50, 0], ...hull(34) });
+B({ id: "deck-snow", kind: "box", size: [120, 88, 2.5], r: 1.2, at: [20, 0, 495.5], ...snow({}) });
+B({ id: "deck-hatch", kind: "cylinder", r: 11, h: 3, segments: 32, at: [56, 16, 496], color: GREY_D, metal: 0.4 });
+for (let k = 0; k < 5; k++) B({ id: `deck-vent-${k}`, kind: "box", size: [9, 26, 3], r: 1, at: [-30 + k * 13, -24, 496], color: DARK, rough: 0.8 });
+for (let k = 0; k < 3; k++) B({ id: `deck-box-${k}`, kind: "box", size: [16 + k * 4, 11, 4], r: 1.5, at: [-20 + k * 34, 26 - (k % 2) * 4, 496], color: GREY_D, texture: ARMOR(35 + k, 100), metal: 0.4 });
 for (const s of [-1, 1]) {
   const n = s < 0 ? "s" : "p";
-  PANELS.forEach(([x0, x1], k) => {
-    const cx = (x0 + x1) / 2, w = x1 - x0;
-    B({ id: `side-plate-${n}-${k}`, kind: "box", size: [w, 4, 112], r: 1.5, at: [cx, s * 61, 356], ...hull(40 + k + (s > 0 ? 10 : 0), { color: k % 2 ? GREY : "#e2e5e8" }) });
-    if (k !== 2) B({ id: `side-recess-${n}-${k}`, kind: "box", size: [w - 22, 1.2, 50], r: 1, at: [cx + (k % 2 ? 4 : -4), s * 63.4, 372 + (k % 2) * 30], color: "#d3d7db", texture: ARMOR(60 + k, 90), metal: 0.3 });
-    B({ id: `side-snow-${n}-${k}`, kind: "box", size: [w - 2, 3.5, 1.8], r: 0.8, at: [cx, s * 61.5, 468], ...snow({}) });
-  });
-  B({ id: `hatch-frame-${n}`, kind: "box", size: [52, 2, 64], r: 3, at: [34, s * 63.5, 362], color: "#b9bec4", metal: 0.35 });
-  B({ id: `hatch-door-${n}`, kind: "box", size: [44, 2, 56], r: 2, at: [34, s * 64.5, 366], color: GREY, texture: ARMOR(51, 90), metal: 0.35 });
-  B({ id: `hatch-handle-${n}`, kind: "box", size: [16, 2, 4], r: 1, at: [34, s * 66, 398], color: DARK });
-  for (let k = 0; k < 8; k++) B({ id: `side-vent-${n}-${k}`, kind: "box", size: [18, 2, 3], at: [-60, s * 63.6, 380 + k * 7], color: DARK });
-  B({ id: `belt-${n}`, kind: "box", size: [330, 4, 4], r: 1, at: [0, s * 61, 466], color: "#c3c8ce", metal: 0.4 });
-  B({ id: `skirt-${n}`, kind: "box", size: [300, 3, 8], r: 1, at: [0, s * 57.5, 340], color: GREY_D, metal: 0.4 });
-  for (let k = 0; k < 6; k++) B({ id: `belly-rib-${n}-${k}`, kind: "box", size: [6, 22, 4], at: [-60 + k * 24, s * 30, 331], color: DARK, metal: 0.4 });
+  [[-38, 18], [22, 78]].forEach(([x0, x1], k) => onSide("centre", s, 354, 1.5, { id: `centre-plate-${n}-${k}`, kind: "box", size: [x1 - x0, 3, 118], r: 1.5, at: [(x0 + x1) / 2], ...hull(40 + k + (s > 0 ? 10 : 0), { color: k ? GREY : "#e2e5e8" }) }));
+  onSide("centre", s, 410, 3.3, { id: `centre-recess-${n}`, kind: "box", size: [40, 1.2, 46], r: 1, at: [-10], color: "#d3d7db", texture: ARMOR(60, 90), metal: 0.3 });
+  onSide("centre", s, 362, 3.2, { id: `hatch-frame-${n}`, kind: "box", size: [44, 2, 62], r: 3, at: [46], color: "#b9bec4", metal: 0.35 });
+  onSide("centre", s, 366, 4.2, { id: `hatch-door-${n}`, kind: "box", size: [37, 2, 54], r: 2, at: [46], color: GREY, texture: ARMOR(51, 90), metal: 0.35 });
+  onSide("centre", s, 396, 5.6, { id: `hatch-handle-${n}`, kind: "box", size: [14, 2, 4], r: 1, at: [46], color: DARK });
+  for (let k = 0; k < 12; k++) onSide("centre", s, 360 + k * 6.5, 1.6, { id: `louvre-${n}-${k}`, kind: "box", size: [5, 2.4, 2.6], at: [76.5], color: DARK });
+  onSide("centre", s, 472, 1.8, { id: `centre-ledge-${n}`, kind: "box", size: [120, 4, 1.8], r: 0.8, at: [20], ...snow({}) });
+  onSide("centre", s, 336, -5, { id: `centre-skirt-${n}`, kind: "box", size: [120, 3, 8], r: 1, at: [20], color: GREY_D, metal: 0.4 });
+  // front: one side plate with a panel line, a ribbed skirt along its lower edge
+  onSide("front", s, 352, 1.5, { id: `front-plate-${n}`, kind: "box", size: [28, 3, 80], r: 1.5, at: [106], ...hull(70 + (s > 0 ? 1 : 0), { color: "#e2e5e8" }) });
+  for (let k = 0; k < 5; k++) onSide("front", s, 336, -0.5, { id: `front-skirt-rib-${n}-${k}`, kind: "box", size: [3, 3, 12], at: [94 + k * 12], color: DARK });
+  onSide("front", s, 434, 1.2, { id: `front-ledge-${n}`, kind: "box", size: [30, 3.5, 1.6], r: 0.7, at: [104], ...snow({}) });
+  // rear: a side plate with a recessed panel and a vent block near the seam
+  onSide("rear", s, 354, 1.5, { id: `rear-plate-${n}`, kind: "box", size: [72, 3, 110], r: 1.5, at: [-86], ...hull(80 + (s > 0 ? 1 : 0), { color: GREY }) });
+  onSide("rear", s, 372, 3.3, { id: `rear-recess-${n}`, kind: "box", size: [34, 1.2, 40], r: 1, at: [-94], color: "#d3d7db", texture: ARMOR(64, 90) });
+  for (let k = 0; k < 6; k++) onSide("rear", s, 420 + k * 7, 1.6, { id: `rear-vent-${n}-${k}`, kind: "box", size: [14, 2, 3], at: [-62], color: DARK });
+  onSide("rear", s, 466, 1.5, { id: `rear-ledge-${n}`, kind: "box", size: [60, 3.5, 1.6], r: 0.7, at: [-78], ...snow({}) });
 }
-// belly: hip drums across the body over each pair of legs, with end caps
-for (const hx of [-82 / SX, 86 / SX]) {
+// front face: a recessed window frame on the raked upper face, a slatted chin block where the neck leaves
+B({ id: "front-frame", kind: "box", size: [30, 62, 1.6], r: 1, at: [135, 0, 428], rot: [0, 49, 0], color: "#b9bec4", metal: 0.35 });
+B({ id: "front-recess", kind: "box", size: [22, 52, 2.2], r: 0.8, at: [135.4, 0, 428.4], rot: [0, 49, 0], color: "#40464d", rough: 0.75 });
+for (let k = 0; k < 4; k++) B({ id: `front-slat-${k}`, kind: "box", size: [2.6, 50, 1.4], at: [129 + k * 3.6, 0, 434 - k * 4.2], rot: [0, 49, 0], color: DARK });
+B({ id: "front-block", kind: "box", size: [10, 74, 76], r: 3, at: [154, 0, 326], ...hull(37) });
+// rear face: an overhanging brow over the roof chamfer, a recessed lower hatch with ribs, greebles on the chamfer
+B({ id: "rear-brow", kind: "box", size: [14, 96, 7], r: 2, at: [-152, 0, 426], ...hull(38) });
+B({ id: "rear-hatch", kind: "box", size: [4, 48, 66], r: 12, at: [-151.5, 0, 352], color: "#40464d", rough: 0.7 });
+for (let k = 0; k < 7; k++) B({ id: `rear-rib-${k}`, kind: "box", size: [4, 4, 60], r: 1, at: [-152, -30 + k * 10, 356], color: GREY_D, metal: 0.4 });
+for (let k = 0; k < 3; k++) B({ id: `rear-greeble-${k}`, kind: "box", size: [18, 16 + k * 6, 5], r: 1.5, at: [-127, -24 + k * 24, 455], rot: [0, -48, 0], color: k % 2 ? DARK : GREY_D, metal: 0.4 });
+B({ id: "rear-snow", kind: "box", size: [52, 84, 2.2], r: 1, at: [-77, 0, 484], ...snow({}) });
+B({ id: "front-snow", kind: "box", size: [30, 74, 2.2], r: 1, at: [104, 0, 446], ...snow({}) });
+// belly: hip drums across the body over each pair of legs, with rings and mounts
+for (const hx of [HIP_R, HIP_F]) {
   const h = hx < 0 ? "r" : "f";
   B({ id: `hip-drum-${h}`, kind: "cylinder", r: 24, h: 60, segments: 48, at: [hx, 30, HZ + 2], rot: [90, 0, 0], color: GREY_D, texture: ARMOR(62, 80), metal: 0.45 });
   for (let k = 0; k < 5; k++) B({ id: `hip-ring-${h}-${k}`, kind: "cylinder", r: 25.5, h: 2.5, segments: 48, at: [hx, 22 - k * 11, HZ + 2], rot: [90, 0, 0], color: METAL, metal: 0.6 });
-  B({ id: `hip-mount-${h}`, kind: "box", size: [62, 60, 8], r: 2, at: [hx, 0, 327], color: "#8e949b", metal: 0.4 });
+  B({ id: `hip-mount-${h}`, kind: "box", size: [56, 60, 8], r: 2, at: [hx, 0, 327], color: "#8e949b", metal: 0.4 });
 }
+for (const s of [-1, 1]) for (let k = 0; k < 5; k++) B({ id: `belly-rib-${s < 0 ? "s" : "p"}-${k}`, kind: "box", size: [6, 22, 4], at: [-20 + k * 20, s * 30, 330], color: DARK, metal: 0.4 });
 
-// ---- interior (colour-coded departments)
-const DECK = 342;
-B({ id: "troop-bulkhead", kind: "box", size: [6, 96, 134], at: [-26, 0, DECK], color: "#6d747c" });
+// ---- interior (colour-coded departments): troops in the centre module, speeder bikes low and the generator high in
+// the rear module, the hatchway to the neck corridor in the front module
+const DECK = 340;
 const troopers = [];
 for (const s of [-1, 1]) {
-  B({ id: `troop-bench-${s < 0 ? "s" : "p"}`, kind: "box", size: [160, 14, 20], r: 2, at: [64, s * 38, DECK], color: "#5a6f8a" });
-  B({ id: `troop-rack-${s < 0 ? "s" : "p"}`, kind: "box", size: [160, 5, 8], at: [64, s * 46, DECK + 78], color: "#4a5d75" });
-  for (let k = 0; k < 7; k++) troopers.push([0 + k * 21, s * 36, DECK + 20]);
+  B({ id: `troop-bench-${s < 0 ? "s" : "p"}`, kind: "box", size: [108, 13, 20], r: 2, at: [20, s * 38, DECK], color: "#5a6f8a" });
+  B({ id: `troop-rack-${s < 0 ? "s" : "p"}`, kind: "box", size: [108, 5, 8], at: [20, s * 44, DECK + 82], color: "#4a5d75" });
+  for (let k = 0; k < 5; k++) troopers.push([-22 + k * 21, s * 36, DECK + 20]);
 }
 B({ id: "troop-bodies", kind: "instances", shape: "cylinder", r: 6, h: 32, items: troopers, color: "#e9edf2", rough: 0.5 });
 B({ id: "troop-helmets", kind: "instances", shape: "sphere", r: 6.8, segments: 14, items: troopers.map(([x, y, z]) => [x, y, z + 38]), color: "#f4f6f8", rough: 0.35 });
-B({ id: "troop-light", kind: "box", size: [150, 6, 3], at: [64, 0, 476], color: "#cfe3ff", emissive: "#9cc2ff", glow: 0.6 });
-B({ id: "bay-deck", kind: "box", size: [120, 96, 6], at: [-90, 0, 408], color: "#6d747c" });
+B({ id: "troop-light", kind: "box", size: [100, 6, 3], at: [20, 0, 478], color: "#cfe3ff", emissive: "#9cc2ff", glow: 0.6 });
+B({ id: "bay-deck", kind: "box", size: [88, 92, 5], at: [-97, 0, 404], color: "#6d747c" });
 for (let k = 0; k < 5; k++) {
-  const x = -140 + k * 22;
-  B({ id: `bike-${k}-body`, kind: "box", size: [10, 40, 10], r: 3, at: [x, 6, DECK + 24], color: "#8a7350" });
-  B({ id: `bike-${k}-vanes`, kind: "box", size: [14, 4, 14], r: 1, at: [x, -26, DECK + 22], color: "#6d5c40" });
-  B({ id: `bike-${k}-cradle`, kind: "box", size: [12, 46, 24], at: [x, 3, DECK], color: "#4d535a" });
+  const x = -134 + k * 18;
+  B({ id: `bike-${k}-body`, kind: "box", size: [9, 40, 10], r: 3, at: [x, 6, DECK + 24], color: "#8a7350" });
+  B({ id: `bike-${k}-vanes`, kind: "box", size: [12, 4, 14], r: 1, at: [x, -26, DECK + 22], color: "#6d5c40" });
+  B({ id: `bike-${k}-cradle`, kind: "box", size: [10, 46, 24], at: [x, 3, DECK], color: "#4d535a" });
 }
-B({ id: "generator-core", kind: "cylinder", r: 20, h: 84, segments: 40, at: [-90, 42, 444], rot: [90, 0, 0], color: "#c46a2a", metal: 0.4, emissive: "#ff7a1a", glow: 0.35 });
-for (let k = 0; k < 4; k++) B({ id: `generator-ring-${k}`, kind: "cylinder", r: 23, h: 5, segments: 40, at: [-90, 36 - k * 22, 444], rot: [90, 0, 0], color: "#5a3a26", metal: 0.6 });
-B({ id: "generator-mount", kind: "box", size: [50, 90, 10], at: [-90, 0, 414], color: "#4d535a" });
-B({ id: "conduit-main", kind: "tube", points: [[-66, 0, 462], [-30, 0, 470], [110, 0, 470], [150, 0, 420], [166, 0, 378]], r: 4, color: "#d08a3a" });
-B({ id: "conduit-legs", kind: "tube", points: [[-91, -30, 420], [-91, -40, 352], [96, -40, 352], [96, 40, 352], [-91, 40, 352], [-91, 30, 420]], r: 3, color: "#d08a3a" });
+B({ id: "generator-core", kind: "cylinder", r: 18, h: 80, segments: 40, at: [-97, 40, 438], rot: [90, 0, 0], color: "#c46a2a", metal: 0.4, emissive: "#ff7a1a", glow: 0.35 });
+for (let k = 0; k < 4; k++) B({ id: `generator-ring-${k}`, kind: "cylinder", r: 21, h: 5, segments: 40, at: [-97, 34 - k * 21, 438], rot: [90, 0, 0], color: "#5a3a26", metal: 0.6 });
+B({ id: "generator-mount", kind: "box", size: [44, 84, 9], at: [-97, 0, 409], color: "#4d535a" });
+B({ id: "neck-hatchway", kind: "box", size: [40, 44, 56], r: 4, at: [126, 0, 340], color: "#55606b", rough: 0.7 });
+B({ id: "conduit-main", kind: "tube", points: [[-80, 0, 458], [-40, 0, 472], [76, 0, 472], [80, 0, 428], [128, 0, 412], [150, 0, 372]], r: 4, color: "#d08a3a" });
+B({ id: "conduit-legs", kind: "tube", points: [[HIP_R, -30, 410], [HIP_R, -40, 350], [HIP_F, -40, 350], [HIP_F, 40, 350], [HIP_R, 40, 350], [HIP_R, 30, 410]], r: 3, color: "#d08a3a" });
 
 // ---- neck: a segmented accordion low on the front face, cables alongside, round a crew corridor
-plain({ id: "neck", kind: "group", at: [158, 0, 352], parent: "body" });
+plain({ id: "neck", kind: "group", at: [159, 0, 362], parent: "body" });
 const bellows = [[0, 0]]; for (let k = 0; k <= 14; k++) bellows.push([k % 2 ? 33 : 28.5, k * 3]); bellows.push([28, 44], [0, 44]);
 add({ id: "neck-bellows", kind: "lathe", profile: bellows, segments: 48, at: [0, 0, 0], rot: [0, 90, 0], color: "#80868d", metal: 0.35, rough: 0.65, parent: "neck" });
 add({ id: "neck-collar", kind: "cylinder", r: 37, h: 6, segments: 48, at: [-2, 0, 0], rot: [0, 90, 0], color: GREY_D, texture: ARMOR(70, 80), metal: 0.4, parent: "neck" });
@@ -127,16 +160,11 @@ for (const s of [-1, 1]) for (const k of [0, 1]) add({ id: `neck-cable-${s < 0 ?
 
 // ---- head: a faceted wedge cab lofted through measured cross-sections (narrow, low front; chamfered top and belly
 // facets), a hollow shell so the slice opens the cockpit; round cheek discs carry the temple guns, chin guns on a gimbal
-plain({ id: "head", kind: "group", at: [200, 0, 350], scale: 1.24, parent: "body" });
-// inward offset of a convex polygon (counter-clockwise)
-function inset(poly, t) {
-  const n = poly.length, lines = poly.map((p, i) => { const q = poly[(i + 1) % n], dx = q[0] - p[0], dz = q[1] - p[1], l = Math.hypot(dx, dz), nx = -dz / l, nz = dx / l; return [p[0] + nx * t, p[1] + nz * t, dx, dz]; });
-  return lines.map((L, i) => { const M = lines[(i - 1 + n) % n]; const det = M[2] * L[3] - M[3] * L[2]; const u = ((L[0] - M[0]) * L[3] - (L[1] - M[1]) * L[2]) / det; return [M[0] + M[2] * u, M[1] + M[3] * u]; });
-}
-// a head section: bottom half-width, side half-width, top half-width; bottom, lower-chamfer, upper-chamfer and top heights
-const sec = (wb, w, wt, z0, z1, z2, z3) => [[-wb, z0], [wb, z0], [w, z1], [w, z2], [wt, z3], [-wt, z3], [-w, z2], [-w, z1]];
-const HEADS = [[0, sec(30, 40, 30, -32, -20, 18, 34)], [58, sec(31, 42, 28, -34, -22, 16, 33)], [92, sec(27, 40, 22, -34, -22, 8, 21)],
-  [112, sec(26, 37, 21, -31, -20, 2, 11)], [124, sec(22, 31, 17, -26, -16, -3, 5)]];
+plain({ id: "head", kind: "group", at: [203, 0, 360], scale: 1.24, parent: "body" });
+// a head section: bottom, side and top half-widths; bottom, lower-chamfer, upper-chamfer and top heights
+const hsec = (wb, w, wt, z0, z1, z2, z3) => [[-wb, z0], [wb, z0], [w, z1], [w, z2], [wt, z3], [-wt, z3], [-w, z2], [-w, z1]];
+const HEADS = [[0, hsec(30, 40, 30, -32, -20, 18, 34)], [58, hsec(31, 42, 28, -34, -22, 16, 33)], [92, hsec(27, 40, 22, -34, -22, 8, 21)],
+  [112, hsec(26, 37, 21, -31, -20, 2, 11)], [124, hsec(22, 31, 17, -26, -16, -3, 5)]];
 const HEADS_IN = HEADS.map(([x, p], i) => [i === 0 ? 5 : i === HEADS.length - 1 ? 118 : x, inset(p, 5)]);
 const H = (p) => add({ parent: "head", ...p });
 H({ id: "head-shell", kind: "loft", sections: HEADS, ...hull(80) });
@@ -216,25 +244,25 @@ for (const [n, hx, hy] of LEGS) {
 
 /** Departments: what each does, which parts it is, and where its card points (body frame). Fiction, after canon. */
 export const DEPTS = [
-  { id: "cockpit", name: "Command cockpit", match: /^(head-|viewport|seat|crew|console)/, anchor: [270, 0, 372],
+  { id: "cockpit", name: "Command cockpit", match: /^(head-|viewport|seat|crew|console)/, anchor: [268, 0, 372],
     fn: "The head is the command cab. A pilot and a gunner sit side by side behind the viewports, with the commander behind them. The head turns on the neck to aim the guns and to look for targets.",
     canon: "Canon describes a cockpit crew of three: pilot, gunner and commander." },
-  { id: "guns", name: "Heavy lasers and blasters", match: /^(chin-|temple-)/, anchor: [360, 0, 310],
+  { id: "guns", name: "Heavy lasers and blasters", match: /^(chin-|temple-)/, anchor: [350, 0, 318],
     fn: "Two heavy laser cannons hang under the chin on a gimbal, and two medium blasters sit at the temples. They aim with the head, so the neck is the turret.",
     canon: "Wookieepedia lists two chin-mounted heavy laser cannons and two medium blasters on the head." },
-  { id: "neck", name: "Neck and crew corridor", match: /^neck-/, anchor: [180, 0, 352],
-    fn: "A segmented bellows lets the head swing while a corridor inside joins the cockpit to the body. Power and control lines run through it.",
+  { id: "neck", name: "Neck and crew corridor", match: /^neck-/, anchor: [181, 0, 362],
+    fn: "A segmented bellows lets the head swing while a corridor inside joins the cockpit to a hatchway in the front module. Power and control lines run through it.",
     canon: "The neck is often described as the walker's weak point. This corridor layout is illustrative." },
-  { id: "troops", name: "Troop bay", match: /^troop-/, anchor: [58, 0, 390],
-    fn: "Infantry ride on benches along both walls. They leave by the side hatches or the rear ramp once the walker kneels.",
-    canon: "Canon gives a capacity of about 40 troopers. Fourteen are shown here." },
-  { id: "speeders", name: "Speeder bike bay", match: /^bike-|^bay-/, anchor: [-90, 0, 370],
-    fn: "Speeder bikes are stowed in cradles on the lower aft deck for scouts to deploy on the ground.",
+  { id: "troops", name: "Troop bay", match: /^troop-/, anchor: [20, 0, 392],
+    fn: "Infantry ride in the centre module, the tallest of the three, on benches along both walls. They leave by the side hatches or the rear ramp once the walker kneels.",
+    canon: "Canon gives a capacity of about 40 troopers. Ten are shown here." },
+  { id: "speeders", name: "Speeder bike bay", match: /^bike-|^bay-/, anchor: [-97, 0, 368],
+    fn: "Speeder bikes are stowed in cradles on the lower deck of the rear module for scouts to deploy on the ground.",
     canon: "Canon sources say an AT-AT carried up to five speeder bikes." },
-  { id: "power", name: "Power generator", match: /^(generator-|conduit-)/, anchor: [-81, 0, 444],
-    fn: "The generator in the upper aft compartment feeds the leg drives, the guns and the systems in the head through armoured conduits.",
+  { id: "power", name: "Power generator", match: /^(generator-|conduit-)/, anchor: [-97, 0, 438],
+    fn: "The generator in the upper rear module, under its sloping roof, feeds the leg drives, the guns and the systems in the head through armoured conduits.",
     canon: "Its exact place inside differs between sources. This placement is illustrative." },
-  { id: "legs", name: "Leg drives", match: /^(thigh-|knee-|shin-|ankle-|foot-|hip-)/, anchor: [86, -42, 200],
+  { id: "legs", name: "Leg drives", match: /^(thigh-|knee-|shin-|ankle-|foot-|hip-)/, anchor: [100, -42, 200],
     fn: "Hip drums swing each leg and exposed hydraulic struts drive the knees and ankles. Only one foot is in the air at a time, so three feet always carry the weight. The round, ridged feet spread the load on snow.",
     canon: "On screen, AT-AT knees bend forward on all four legs. The gait timing here is a physical guess." },
 ];

@@ -403,7 +403,8 @@ test("the walker: valid hero; IK lands every foot; planted feet hold still; one 
   assert.deepEqual(validateScene(S.scene), []);
   assert.ok(solidCount(S.scene) >= 80);
   // forward kinematics of the solved angles reaches the target (rotation about y: down vector -> x = -sin(theta))
-  for (const [dx, dz] of [[0, -420], [140, -420], [-140, -400], [60, -350]]) {
+  const R = S.L1 + S.L2;
+  for (const [dx, dz] of [[0, -0.95 * R], [0.3 * R, -0.9 * R], [-0.3 * R, -0.88 * R], [0.1 * R, -0.75 * R]]) {
     const [a, b] = G.legAngles(dx, dz);
     const x = -S.L1 * Math.sin(a) - S.L2 * Math.sin(a + b), z = -S.L1 * Math.cos(a) - S.L2 * Math.cos(a + b);
     assert.ok(Math.hypot(x - dx, z - dz) < 1e-6, `reach ${dx},${dz}`);
@@ -425,4 +426,13 @@ test("the walker: valid hero; IK lands every foot; planted feet hold still; one 
 
 test("extrude bevel, yz plane and armor texture validate", () => {
   assert.equal(problemsOf([{ id: "p", kind: "extrude", plane: "yz", bevel: 3, depth: 40, outline: [[0, 0], [50, 0], [50, 30], [0, 30]], texture: { kind: "armor", seed: 2 } }]), "");
+});
+
+test("validates lofts and the perspective camera", () => {
+  const sq = (w) => [[-w, -w], [w, -w], [w, w], [-w, w]];
+  assert.equal(problemsOf([{ id: "l", kind: "loft", sections: [[0, sq(4)], [10, sq(2)]], inside: true }]), "");
+  assert.match(problemsOf([{ id: "l", kind: "loft", sections: [[0, sq(4)], [10, [[0, 0], [1, 0], [0, 1]]]] }]), /same number of points/);
+  assert.match(problemsOf([{ id: "l", kind: "loft", sections: [[0, sq(4)]] }]), /two or more/);
+  assert.deepEqual(validateScene({ fig: "F", title: "t", size: "simple", camera: { azimuth: 30, elevation: 20, fov: 30 }, parts: [{ id: "b", kind: "box", size: [1, 1, 1] }] }).filter((p) => /fov/.test(p)), []);
+  assert.ok(validateScene({ fig: "F", title: "t", camera: { azimuth: 30, elevation: 20, fov: 120 }, parts: [] }).some((p) => /fov/.test(p)));
 });

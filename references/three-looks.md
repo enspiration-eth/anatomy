@@ -373,3 +373,7 @@ Use these when the subject is an algorithm over a field: contouring, thresholds,
   speed, so it never slides. Test that.
 
 - `armor` texture: `{ kind: "armor", seed, color, panels, grime, rivets, project: "box", tile }`. It adds panel lines, rivets, grime streaks and chipped edges as colour, roughness and bump maps. Use it on hard-surface machines. Extrude `bevel: n` rounds the edges (the outline is inset first, so the size stays the same), and `plane: "yz"` extrudes along +x.
+
+- `armor` also returns an `aoMap` (seam crevices darkened with a soft falloff), so panel lines read under ambient and environment light.
+- `loft`: `{ kind: "loft", sections: [[x, [[y, z], ...]], ...] }`. It builds a flat-faceted solid through convex cross-sections along x, and every section needs the same number of points. With `inside: true` the faces point inward, so an inset copy becomes the lining of a hollow shell that the section opens. `caps: false` leaves the ends open.
+- `camera.fov` (10–90) swaps the orthographic camera for a perspective one framed to the same width, for cinematic low angles. `fig.view` zoom then moves the camera in.

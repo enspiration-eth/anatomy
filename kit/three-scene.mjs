@@ -16,6 +16,7 @@ export const KINDS = {
   extrude: { need: ["outline", "depth"] }, // outline [[a, b], ...] in plane "xy" (default, extruded up z) or "xz" (extruded along +y) // a flat disc in the part's xy plane, uv 0..1 across it (dial faces)
   instances: { need: ["shape", "items"] }, // one geometry drawn many times: shape box|cylinder|sphere, items [[x, y, z, rz?], ...]
   plane: { need: ["size"] }, // size [w, h] in the part's xy plane; optional screen: [px w, px h] for a canvas texture
+  loft: { need: ["sections"] }, // a faceted solid through cross-sections along x: [[x, [[y, z], ...]], ...] (same point count); inside, caps
   implicit: { need: ["shapes"] }, // a smooth SDF body: shapes [["cone", a, b, ra, rb, k?] | ["ellipsoid", c, [rx, ry, rz], k?]], cell (mm), blend, relax
   heightfield: { need: ["size"] }, // a terrain sheet: size [w, d], grid (segments per side); live code lifts it with fig.heights(id, fn)
   ribbon: { need: ["width"] }, // flat strips along live polylines (contours, routes): width, max (segments); live code sets them with fig.ribbon(id, lines)
@@ -142,6 +143,7 @@ function lookProblems(part, bad, name) {
     if (!(Array.isArray(part.items) && part.items.length >= 2 && part.items.every((p) => isVec(p, 3) || isVec(p, 4)))) bad(`${name}: items must be at least two [x, y, z] or [x, y, z, rz] (one copy is a part, not instances)`);
     if (part.itemColors !== undefined && !(Array.isArray(part.itemColors) && part.itemColors.every(isHex))) bad(`${name}: itemColors must be #rrggbb strings`);
   }
+  if (part.kind === "loft" && !(Array.isArray(part.sections) && part.sections.length >= 2 && part.sections.every((q) => isNum(q[0]) && Array.isArray(q[1]) && q[1].length >= 3 && q[1].length === part.sections[0][1].length && q[1].every((p) => isVec(p, 2))))) bad(`${name}: sections must be two or more [x, [[y, z], ...]] with the same number of points`);
   if (part.kind === "extrude") {
     if (!(Array.isArray(part.outline) && part.outline.length >= 3 && part.outline.every((p) => isVec(p, 2)))) bad(`${name}: outline must be at least three [a, b] points`);
     if (!(isNum(part.depth) && part.depth > 0)) bad(`${name}: depth must be positive`);
@@ -169,6 +171,7 @@ export function validateScene(spec) {
   const camera = spec.camera ?? {};
   if (!isNum(camera.azimuth) || camera.azimuth < 0 || camera.azimuth > 90) bad("camera.azimuth must be a number from 0 to 90");
   if (!isNum(camera.elevation) || camera.elevation < 10 || camera.elevation > 80) bad("camera.elevation must be a number from 10 to 80");
+  if (camera.fov !== undefined && !(isNum(camera.fov) && camera.fov >= 10 && camera.fov <= 90)) bad("camera.fov must be a number from 10 to 90 (degrees, perspective)");
   if (spec.fit !== undefined && spec.fit !== "parts" && spec.fit !== "box") bad(`fit must be "box" (default) or "parts"`);
   if (!Array.isArray(spec.parts) || spec.parts.length === 0) return [...problems, "parts must be a non-empty array"];
   const ids = new Map();

@@ -29,6 +29,28 @@ function cutMaterial(source, plane, style = true, hatch) {
   return m;
 }
 
+// A faceted solid lofted through cross-sections along x: sections [[x, [[y, z], ...]], ...], every section with the same
+// number of points (a convex outline). Facets are flat-shaded and face away from the section centres (inside: true faces
+// in, for the inner wall of a shell); caps close both ends unless caps is false.
+function loftGeometry(part) {
+  const S = part.sections, n = S[0][1].length, pos = [], inside = !!part.inside;
+  const P = (i, j) => { const [x, pts] = S[i]; const [y, z] = pts[j % n]; return new THREE.Vector3(x, y, z); };
+  const C = S.map(([x, pts]) => new THREE.Vector3(x, pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n));
+  const tri = (a, b, c, out) => { const nrm = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    if ((nrm.dot(out) < 0) !== inside) [b, c] = [c, b]; pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z); };
+  for (let i = 0; i + 1 < S.length; i++) for (let j = 0; j < n; j++) {
+    const a = P(i, j), b = P(i, j + 1), c = P(i + 1, j + 1), d = P(i + 1, j), mid = new THREE.Vector3().addVectors(C[i], C[i + 1]).multiplyScalar(0.5);
+    const out = new THREE.Vector3().addVectors(a, c).multiplyScalar(0.5).sub(mid);
+    tri(a, b, c, out); tri(a, c, d, out);
+  }
+  if (part.caps !== false) for (const [i, dir] of [[0, -1], [S.length - 1, 1]]) for (let j = 0; j < n; j++) tri(C[i].clone(), P(i, j), P(i, j + 1), new THREE.Vector3(dir, 0, 0));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2));
+  g.computeVertexNormals();
+  return g;
+}
+
 function roundedBox(size, r) {
   const [w, d, h] = size;
   if (!r) return new THREE.BoxGeometry(w, d, h).translate(0, 0, h / 2);
@@ -93,6 +115,7 @@ function geometryOf(part) {
       if (part.plane === "yz") return g.applyMatrix4(new THREE.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1)); // (a, b) = (y, z), extruded along +x
       return part.plane === "xz" ? g.rotateX(Math.PI / 2).translate(0, part.depth, 0) : g;
     }
+    case "loft": return loftGeometry(part);
     case "implicit": return implicitGeometry(part);
     case "disc": return new THREE.CircleGeometry(part.r, seg);
     case "plane": return new THREE.PlaneGeometry(part.size[0], part.size[1]);
@@ -151,8 +174,8 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     const look = part.texture ? TEXTURES[part.texture.kind]({ ...part.texture, theme }) : {};
     const base = look.plain || part.colors || m.transmission ? (part.color ?? "#ffffff") : part.color ?? (part.lit ? hex(colors.lit) : hex(colors[part.tone ?? "mid"]));
     const options = { side: THREE.DoubleSide, color: base, roughness: m.rough ?? part.rough ?? (part.glass ? 0.08 : 0.55), metalness: m.metal ?? part.metal ?? (part.glass ? 0 : 0.15) };
-    for (const key of ["map", "roughnessMap", "bumpMap", "bumpScale", "alphaTest"]) if (look[key] !== undefined) options[key] = look[key];
-    if (part.texture?.repeat) for (const key of ["map", "roughnessMap", "bumpMap"]) options[key]?.repeat.set(...part.texture.repeat);
+    for (const key of ["map", "roughnessMap", "bumpMap", "bumpScale", "aoMap", "aoMapIntensity", "alphaTest"]) if (look[key] !== undefined) options[key] = look[key];
+    if (part.texture?.repeat) for (const key of ["map", "roughnessMap", "bumpMap", "aoMap"]) options[key]?.repeat.set(...part.texture.repeat);
     if (part.emissive) Object.assign(options, { emissive: part.emissive, emissiveIntensity: part.glow ?? 1 });
     if (part.colors) options.vertexColors = true;
     const physical = part.glass || m.transmission || m.clearcoat || m.sheen || m.iridescence;
@@ -251,7 +274,9 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
 
   // An orthographic, isometric-style camera at the figure's azimuth and elevation, z up.
   const { azimuth, elevation } = spec.camera;
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, radius * 20);
+  // camera.fov (degrees) asks for a perspective camera instead, framed like the orthographic one (same fitted width at the target)
+  const fov = spec.camera.fov;
+  const camera = fov ? new THREE.PerspectiveCamera(fov, 1, radius * 0.01, radius * 40) : new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, radius * 20);
   camera.up.set(0, 0, 1);
   const az = rad(azimuth), el = rad(elevation);
   const view = new THREE.Vector3(-Math.cos(el) * Math.sin(az), -Math.cos(el) * Math.cos(az), Math.sin(el));
@@ -273,6 +298,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     const aspect = width / height;
     const halfW = Math.max(w, h * aspect) / 2, halfH = halfW / aspect;
     const cx = (local.max.x + local.min.x) / 2, cy = (local.max.y + local.min.y) / 2;
+    if (fov) { camera.aspect = aspect; camera.userData.halfW ??= halfW; camera.updateProjectionMatrix(); return; }
     Object.assign(camera, { left: cx - halfW, right: cx + halfW, top: cy + halfH, bottom: cy - halfH });
     camera.updateProjectionMatrix();
   };
@@ -293,6 +319,12 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
      */
     view(azimuth, elevation, zoom = 1, target = centre) {
       const a = rad(azimuth), e = rad(elevation);
+      const dir = new THREE.Vector3(-Math.cos(e) * Math.sin(a), -Math.cos(e) * Math.cos(a), Math.sin(e));
+      if (fov) {
+        const tanH = Math.tan(rad(fov) / 2) * camera.aspect;
+        camera.position.copy(target).add(dir.multiplyScalar(camera.userData.halfW / tanH / zoom));
+        camera.lookAt(target); camera.updateMatrixWorld(); camera.updateProjectionMatrix(); return;
+      }
       const halfW = (camera.userData.halfW ??= (camera.right - camera.left) / 2), aspect = (camera.right - camera.left) / (camera.top - camera.bottom);
       Object.assign(camera, { left: -halfW, right: halfW, top: halfW / aspect, bottom: -halfW / aspect, zoom });
       camera.position.copy(target).add(new THREE.Vector3(-Math.cos(e) * Math.sin(a), -Math.cos(e) * Math.cos(a), Math.sin(e)).multiplyScalar(radius * 6));

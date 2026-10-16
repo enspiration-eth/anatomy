@@ -1,11 +1,10 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeThreeFigure } from "../../scripts/build-three.mjs";
-import { scene, L1, L2, HZ, ANKLE, LEGS, GAIT, speed, GROUND, SNOW, DEPTS, SOURCES, FACTS } from "./scene.mjs";
+import { scene, L1, L2, HZ, ANKLE, LEGS, GAIT, speed, GROUND, SNOW, DEPTS, SOURCES, FACTS, UNIT_M } from "./scene.mjs";
 import { legAngles, footAt } from "./gait.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const UNIT_M = 0.04;
 const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const live = `
 const L1 = ${L1}, L2 = ${L2}, HZ = ${HZ}, ANKLE = ${ANKLE}, LEGS = ${JSON.stringify(LEGS)}, GAIT = ${JSON.stringify(GAIT)}, SPEED = ${speed}, GROUND = ${JSON.stringify(GROUND)}, NSNOW = ${SNOW}, UNIT_M = ${UNIT_M};
@@ -15,6 +14,25 @@ ${legAngles.toString()}
 ${footAt.toString()}
 const { THREE } = fig;
 const P = (id) => fig.parts.get(id), dark = fig.theme === "dark";
+// ---------- atmosphere: an overcast sky, distance fog, a cool rim light from behind, a warm-white key
+{
+  const [top, mid, hz] = dark ? ["#1b2029", "#3a4351", "#6d7786"] : ["#98a3b2", "#bfc8d3", "#dde3ea"];
+  // a sky dome fixed in the world, so the horizon always meets the fogged snow in the same colour
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(30000, 32, 16), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(top) }, mid: { value: new THREE.Color(mid) }, hz: { value: new THREE.Color(hz) } },
+    vertexShader: "varying vec3 vd; void main() { vd = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: "uniform vec3 top, mid, hz; varying vec3 vd; void main() { float h = max(vd.z, 0.0); vec3 c = mix(hz, mid, smoothstep(0.0, 0.12, h)); c = mix(c, top, smoothstep(0.12, 0.6, h)); gl_FragColor = vec4(c, 1.0);\\n#include <colorspace_fragment>\\n}" }));
+  sky.frustumCulled = false; sky.renderOrder = -1; fig.scene.add(sky);
+  fig.scene.fog = new THREE.Fog(hz, 1e5, 2e5);
+  if (!dark) fig.scene.environmentIntensity *= 0.45;
+  fig.scene.traverse((o) => { if (o.isHemisphereLight) { o.intensity *= dark ? 0.7 : 0.5; o.color.set(dark ? "#d3d8e0" : "#e9edf2"); o.groundColor.set(dark ? "#4a4c50" : "#9a9890"); }
+    if (o.isDirectionalLight) { o.color.set("#fff3e6"); o.intensity *= dark ? 1.45 : 0.85; } });
+  const rim = new THREE.DirectionalLight(dark ? "#d6e2f5" : "#e8eef8", dark ? 2.0 : 1.5); rim.position.set(-900, 700, 520); fig.scene.add(rim);
+  // an endless snow plain round the live heightfield, so its edges never show
+  const plainMat = new THREE.MeshStandardMaterial({ color: dark ? "#dfe5ee" : "#e4e9f0", roughness: 0.95 });
+  const plainMesh = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), plainMat); plainMesh.position.z = -1.5; plainMesh.receiveShadow = true; fig.scene.add(plainMesh);
+  const fill = new THREE.DirectionalLight("#9fb3cc", 0.5); fill.position.set(400, -800, 200); fig.scene.add(fill);
+}
 const root = stage.closest(".iso-plate")?.parentElement ?? document.body;
 const $ = (q) => root.querySelector(q), status = $("[data-live]");
 const sliceBtn = $("[data-slice]"), sliceIn = $("[data-depth]"), sliceOut = $("[data-depth-out]"), walkBtn = $("[data-walk]");
@@ -22,8 +40,8 @@ const viewBtns = [...root.querySelectorAll("[data-view]")], deptBtns = [...root.
 const NAMES = { fl: "front left", fr: "front right", rl: "rear left", rr: "rear right" };
 
 // ---------- state
-let t = 1.3, walking = !still.matches, az = 30, el = 16, zoom = 1.15, sliceOn = false, sliceY = -40, open = null, hover = null, frame = 0;
-const target = new THREE.Vector3(70, 0, 330);
+let t = 1.3, walking = !still.matches, az = 36, el = 2, zoom = 2.2, sliceOn = false, sliceY = -20, open = null, hover = null, frame = 0;
+const target = new THREE.Vector3(70, 0, 250);
 const tour = idleTour(6000, () => runner.kick());
 let tourClock = 0;
 const body = P("body"), head = P("head"), neck = P("neck");
@@ -72,21 +90,21 @@ function snowHeight(x, y) {
 const SNOW_RAMP = [[0, "#7d91ae"], [0.5, "#c7d3e3"], [0.78, "#edf2f8"], [1, "#ffffff"]];
 function drawSnow() {
   fig.heights("snowfield", snowHeight);
-  fig.paint("snowfield", (x, y, z) => Math.min(1, Math.max(0, 0.78 + z / 22)), SNOW_RAMP);
+  fig.paint("snowfield", (x, y, z) => Math.min(dark ? 1 : 0.86, Math.max(0, 0.78 + z / 22)), SNOW_RAMP);
 }
 // ---------- falling snow
 const flakes = P("flakes"), fpos = [], fm = new THREE.Matrix4(), fq = new THREE.Quaternion(), fv = new THREE.Vector3(), fs = new THREE.Vector3(1, 1, 1);
-for (let i = 0; i < NSNOW; i++) { const h = Math.sin(i * 12.9898) * 43758.5453; fpos.push([(h - Math.floor(h) - 0.5) * GROUND.w, ((Math.sin(i * 78.233) * 43758.5453) % 1) * GROUND.d / 2, ((i * 37) % 820), 28 + (i % 7) * 7]); }
+for (let i = 0; i < NSNOW; i++) { const h = Math.sin(i * 12.9898) * 43758.5453; fpos.push([(h - Math.floor(h) - 0.5) * GROUND.w, ((Math.sin(i * 78.233) * 43758.5453) % 1) * GROUND.d / 2, ((i * 37) % 640), 28 + (i % 7) * 7]); }
 function snowfall(dt) {
   for (let i = 0; i < NSNOW; i++) { const f = fpos[i];
     f[2] -= f[3] * dt; f[0] -= SPEED * 0.25 * dt + 6 * Math.sin(t * 0.7 + i) * dt;
-    if (f[2] < 0) { f[2] += 820; } if (f[0] < -GROUND.w / 2) f[0] += GROUND.w;
+    if (f[2] < 0) { f[2] += 640; } if (f[0] < -GROUND.w / 2) f[0] += GROUND.w;
     flakes.setMatrixAt(i, fm.compose(fv.set(f[0], f[1], f[2]), fq, fs)); }
   flakes.instanceMatrix.needsUpdate = true;
 }
 
 // ---------- camera
-function applyView() { fig.view(az, el, zoom, target); }
+function applyView() { fig.view(az, el, zoom, target); const d = fig.camera.position.distanceTo(target); if (fig.scene.fog) { fig.scene.fog.near = d * 1.1; fig.scene.fog.far = d * 5; } }
 // ---------- section
 function applySlice() {
   fig.setSection(sliceOn ? sliceY : -2000);
@@ -153,9 +171,9 @@ function placeCard() {
   const cw = Math.min(250, W - 24); card.style.width = cw + "px"; card.style.maxHeight = (H - 16) + "px"; card.style.overflowY = "auto"; const ch = card.offsetHeight || 160;
   // the walker's box on screen, so the card sits clear of the subject when it can
   const boxOf = (xs, zs) => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (const x of xs) for (const y of [-150, 150]) for (const z of zs) { bv.set(x, y, z); body.localToWorld(bv); bv.project(fig.camera);
+    for (const x of xs) for (const y of [-70, 70]) for (const z of zs) { bv.set(x, y, z); body.localToWorld(bv); bv.project(fig.camera);
       const sx = (bv.x + 1) / 2 * W, sy = (1 - bv.y) / 2 * H; x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); } return [x0, y0, x1, y1]; };
-  const hullBox = boxOf([-230, 560], [380, 615]), legBox = boxOf([-230, 230], [0, 380]);
+  const hullBox = boxOf([-190, 400], [300, 500]), legBox = boxOf([-160, 160], [0, 300]);
   const [bx0, by0, bx1, by1] = hullBox;
   const m = 14, cands = [];
   for (const cx of [m, (W - cw) / 2, W - cw - m]) for (const cy of [m, (H - ch) / 2, H - ch - m]) cands.push([cx, cy]);
@@ -190,8 +208,8 @@ stage.addEventListener("pointerup", (e) => {
   const d = pick(e); if (d) openCard(d); else closeCard(); runner.kick();
 });
 stage.addEventListener("pointerleave", () => { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = null; runner.kick(); });
-stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 0.6, 3.2); applyView(); runner.kick(); }, { passive: false });
-const setView = (k) => { if (k === "side") { az = 0; el = 3; zoom = 1.25; } else if (k === "front") { az = 90; el = 8; zoom = 1.3; } else { az = 30; el = 16; zoom = 1.15; } applyView(); };
+stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 1.2, 8); applyView(); runner.kick(); }, { passive: false });
+const setView = (k) => { if (k === "side") { az = 0; el = 3; zoom = 1.8; } else if (k === "front") { az = -90; el = 5; zoom = 1.9; } else { az = 36; el = 2; zoom = 2.2; } applyView(); };
 viewBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); setView(b.dataset.view); runner.kick(); }));
 deptBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); const d = DEPTS.find((q) => q.id === b.dataset.dept); if (open && open.id === d.id) closeCard(); else openCard(d); }));
 sliceBtn?.addEventListener("click", () => { tour.touch(); sliceOn = !sliceOn; applySlice(); runner.kick(); });
@@ -224,9 +242,9 @@ function draw(dt) {
 const runner = loop(stage, (dt) => {
   if (tour.touring) {
     tourClock += dt;
-    az = 30 + 38 * Math.sin(tourClock * 0.09); el = 16 + 6 * Math.sin(tourClock * 0.13);
+    az = 38 + 34 * Math.sin(tourClock * 0.09); el = 7 + 5 * Math.sin(tourClock * 0.13);
     const ph = (tourClock % 36) / 36; // every 36 s: slice in from the near side, hold, out
-    if (ph > 0.45) { sliceOn = true; sliceY = -120 + 140 * Math.min(1, (ph - 0.45) / 0.25); } else if (sliceOn && ph < 0.05) sliceOn = false;
+    if (ph > 0.45) { sliceOn = true; sliceY = -70 + 80 * Math.min(1, (ph - 0.45) / 0.25); } else if (sliceOn && ph < 0.05) sliceOn = false;
     applySlice(); applyView();
   }
   if (walking) { advance(dt); snowfall(dt); }
@@ -238,7 +256,7 @@ for (let k = 0; k < 14 * 30; k++) { advance(1 / 30); pose(t, bobAt(t)); }
 if (still.matches) t = 2.0;
 snowfall(0); applyView(); applySlice(); draw(0);
 if (walkBtn) { walkBtn.setAttribute("aria-pressed", String(walking)); walkBtn.textContent = walking ? "Space Pause walk" : "Space Walk"; }
-window.__atat = { open: (id) => openCard(DEPTS.find((d) => d.id === id)), close: closeCard, get card() { return open && open.id; }, prints, setSlice: (y) => { sliceOn = y !== null; if (y !== null) sliceY = y; applySlice(); draw(0); }, view: (a, e, z = 1) => { az = a; el = e; zoom = z; applyView(); draw(0); }, legs };
+window.__atat = { open: (id) => openCard(DEPTS.find((d) => d.id === id)), close: closeCard, get card() { return open && open.id; }, prints, fig, setSlice: (y) => { sliceOn = y !== null; if (y !== null) sliceY = y; applySlice(); draw(0); }, view: (a, e, z = 1, tg) => { az = a; el = e; zoom = z; if (tg) target.set(...tg); applyView(); draw(0); }, legs };
 `;
 const css = `.at-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;font:11px/1.4 var(--anatomy-mono);color:var(--anatomy-muted)}
 .at-ctl button{padding:5px 9px;border:1px solid var(--anatomy-mid);background:transparent;color:var(--anatomy-muted);font:inherit;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
@@ -255,7 +273,7 @@ const SIMPLIFIED = [
   "Interior layout is illustrative. Canon names the crew, troops, speeder bikes and guns [1][2], not a deck plan.",
   "The walk is a lateral-sequence gait: one foot in the air at a time, the slow, stable gait of large quadrupeds. Knees bend forward. Leg angles come from two-bone inverse kinematics, so every planted foot holds still on the snow as the ground slides back beneath it.",
   "Footprints are pressed into a live heightfield as each foot lands. They drift back with the snow and fill in over about half a minute.",
-  `Scale is about 4 cm per unit, which puts the roof near ${FACTS.heightM} m, the height Wookieepedia gives [1].`,
+  `Scale is about 4.5 cm per unit, which puts the roof near ${FACTS.heightM} m, the height Wookieepedia gives [1].`,
 ];
 const notes = `<details class="at-notes"><summary>Sources and simplifications</summary><ul>${SIMPLIFIED.map((t) => `<li>${esc(t)}</li>`).join("")}</ul><p>Sources:</p><ul>${SOURCES.map(([n, t, u]) => `<li>${n} <a href="${u}">${esc(t)}</a></li>`).join("")}</ul></details>`;
 writeThreeFigure({
@@ -267,6 +285,6 @@ writeThreeFigure({
   ],
   caption: `An all-terrain armoured transport walking in place through snow. It is fiction, built here as an original procedural model after the canon design [1][2]. It walks one foot at a time: each leg's thigh, knee and ankle angles are solved from where its foot must be, so a planted foot stays still while the snow slides back beneath it. Each landing presses a print with a raised rim into the snow, and older prints fill in. Turn on the slice and move it through the body from the side to see what lies inside: the cockpit in the head, the neck corridor, the troop bay, the speeder bike bay, the generator and the leg drives. Click any of them for a card explaining what it does. Canon gives a crew of ${FACTS.crew} in the cockpit, about ${FACTS.troops} troops and ${FACTS.bikes} speeder bikes [1]; the deck layout shown is illustrative.`,
   stage: { role: "group", label: "Walker in snow. Drag to orbit, scroll to zoom, arrow keys turn the camera, V side view. S toggles the slice, [ and ] move it. Keys 1 to 7 open a department card, Escape closes it. Space pauses the walk." },
-  after: `<div class="at-ctl" role="group" aria-label="View and slice"><button type="button" data-walk aria-pressed="true">Space Pause walk</button><span class="at-gap"></span><button type="button" data-view="iso">Iso</button><button type="button" data-view="side">V Side</button><button type="button" data-view="front">Front</button><span class="at-gap"></span><button type="button" data-slice aria-pressed="false">S Slice off</button><label>Depth <input type="range" min="-120" max="120" step="2" value="-40" data-depth aria-label="Slice depth across the body, from the near side"></label><span data-depth-out>off</span></div>
+  after: `<div class="at-ctl" role="group" aria-label="View and slice"><button type="button" data-walk aria-pressed="true">Space Pause walk</button><span class="at-gap"></span><button type="button" data-view="iso">Iso</button><button type="button" data-view="side">V Side</button><button type="button" data-view="front">Front</button><span class="at-gap"></span><button type="button" data-slice aria-pressed="false">S Slice off</button><label>Depth <input type="range" min="-70" max="70" step="1" value="-20" data-depth aria-label="Slice depth across the body, from the near side"></label><span data-depth-out>off</span></div>
 <div class="at-ctl" role="group" aria-label="Departments">${DEPTS.map((d, i) => `<button type="button" data-dept="${d.id}" aria-pressed="false">${i + 1} ${esc(d.name)}</button>`).join("")}</div><span class="at-live" aria-live="polite" data-live></span>${notes}`,
 });

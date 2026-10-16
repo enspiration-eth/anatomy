@@ -258,7 +258,8 @@ export const TEXTURES = {
   // Weathered armour plate: mottled paint, recessed panel lines with rivet rows, grime streaks running down from
   // the seams, chipped lighter edges. Colour, roughness and bump share the pattern; tiles seamlessly.
   armor({ seed = 21, size = 1024, color = "#8d939a", panels = 5, grime = 0.5, rivets = true }) {
-    const rnd = seeded(seed), [c, g] = canvasOf(size), [rc, r] = canvasOf(size), [bc, b] = canvasOf(size);
+    const rnd = seeded(seed), [c, g] = canvasOf(size), [rc, r] = canvasOf(size), [bc, b] = canvasOf(size), [ac, ao] = canvasOf(size);
+    ao.fillStyle = "#ffffff"; ao.fillRect(0, 0, size, size);
     g.fillStyle = color; g.fillRect(0, 0, size, size);
     r.fillStyle = "#9a9a9a"; r.fillRect(0, 0, size, size);
     b.fillStyle = "#808080"; b.fillRect(0, 0, size, size);
@@ -273,6 +274,8 @@ export const TEXTURES = {
     for (const [x0, y0, x1, y1] of seams) {
       g.strokeStyle = "rgba(20,22,26,0.55)"; g.lineWidth = 2.2; b.strokeStyle = "#3a3a3a"; b.lineWidth = 3; r.strokeStyle = "#d8d8d8"; r.lineWidth = 3;
       for (const k of [g, b, r]) wrap((dx, dy) => { k.beginPath(); k.moveTo(x0 + dx, y0 + dy); k.lineTo(x1 + dx, y1 + dy); k.stroke(); });
+      // ambient occlusion: the seam crevice and a soft falloff either side of it
+      for (const [w, a] of [[14, 0.10], [7, 0.18], [3, 0.45]]) { ao.strokeStyle = `rgba(0,0,0,${a})`; ao.lineWidth = w; wrap((dx, dy) => { ao.beginPath(); ao.moveTo(x0 + dx, y0 + dy); ao.lineTo(x1 + dx, y1 + dy); ao.stroke(); }); }
       // a lit lip on one side of the seam
       g.strokeStyle = "rgba(255,255,255,0.10)"; g.lineWidth = 1.2; wrap((dx, dy) => { g.beginPath(); g.moveTo(x0 + dx + 2, y0 + dy + 2); g.lineTo(x1 + dx + 2, y1 + dy + 2); g.stroke(); });
       if (rivets) { const len = Math.hypot(x1 - x0, y1 - y0), n = Math.floor(len / 22);
@@ -284,10 +287,11 @@ export const TEXTURES = {
     for (let i = 0; i < 260 * grime; i++) { const x = rnd() * size, y = rnd() * size, h = 30 + rnd() * 220, w = 2 + rnd() * 9;
       const grad = g.createLinearGradient(0, y, 0, y + h); grad.addColorStop(0, `rgba(40,34,28,${0.08 + rnd() * 0.16})`); grad.addColorStop(1, "rgba(40,34,28,0)");
       g.fillStyle = grad; wrap((dx, dy) => g.fillRect(x + dx, y + dy, w, h));
+      ao.fillStyle = "rgba(0,0,0,0.05)"; wrap((dx, dy) => ao.fillRect(x + dx, y + dy, w, h * 0.5));
       r.fillStyle = "rgba(255,255,255,0.08)"; wrap((dx, dy) => r.fillRect(x + dx, y + dy, w, h * 0.6)); }
     // chips: small light flecks of bare metal
     for (let i = 0; i < 900; i++) { const x = rnd() * size, y = rnd() * size; g.fillStyle = `rgba(220,224,228,${0.15 + rnd() * 0.3})`; g.fillRect(x, y, 1 + rnd() * 3, 1 + rnd() * 2); r.fillStyle = "#555"; r.fillRect(x, y, 2, 2); }
-    return { map: tex(c), roughnessMap: tex(rc, { srgb: false }), bumpMap: tex(bc, { srgb: false }), bumpScale: 1.2, plain: true };
+    return { map: tex(c), roughnessMap: tex(rc, { srgb: false }), bumpMap: tex(bc, { srgb: false }), bumpScale: 1.2, aoMap: tex(ac, { srgb: false }), aoMapIntensity: 1, plain: true };
   },
   // Wood: growth rings stretched along u with a little waviness, for cabinets, benches and handles.
   wood({ seed = 5, size = 1024, color = "#6b4a32", theme, rings = 48 }) {

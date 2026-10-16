@@ -1,14 +1,14 @@
 // Browser runtime for three.js figures. Inlined as an ES module by
 // scripts/inline-three.mjs; "three" comes from the page's import map.
 import * as THREE from "three";
-import { TEXTURES, SHADERS, RAMPS, rampColor, paintVertices, bakeColors, projectUVs, studioEnvironment, instancesOf } from "./three-looks.js";
+import { TEXTURES, SHADERS, RAMPS, rampColor, paintVertices, bakeColors, projectUVs, studioEnvironment, instancesOf, implicitGeometry } from "./three-looks.js";
 
 const PALETTE = {
   dark: { bg: 0x161614, lo: 0x2c2c29, mid: 0x4a4a45, hi: 0x8a8a82, faint: 0x3a3a36, lit: 0xffffff, edge: 0x0d0d0c, line: 0x9a9a92 },
   light: { bg: 0xf4f4ef, lo: 0xb9b9b1, mid: 0xd6d6cf, hi: 0xf2f2ec, faint: 0xc8c8c0, lit: 0x111111, edge: 0x3a3a36, line: 0x55554f },
 };
 
-const isEffect = (part) => part.shader && ["plume", "glow", "cherenkov", "steam"].includes(part.shader.name);
+const isEffect = (part) => part.shader && ["plume", "glow", "cherenkov", "steam", "fieldline"].includes(part.shader.name);
 const rad = (deg) => (deg * Math.PI) / 180;
 
 /** Clones a material, clips it at `plane` and draws its back faces (the inside, seen through the cut) hatched. */
@@ -89,6 +89,7 @@ function geometryOf(part) {
       const g = new THREE.ExtrudeGeometry(shape, { depth: part.depth, bevelEnabled: false, curveSegments: 24 });
       return part.plane === "xz" ? g.rotateX(Math.PI / 2).translate(0, part.depth, 0) : g;
     }
+    case "implicit": return implicitGeometry(part);
     case "disc": return new THREE.CircleGeometry(part.r, seg);
     case "plane": return new THREE.PlaneGeometry(part.size[0], part.size[1]);
     default: return null;
@@ -212,6 +213,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     scene.environmentIntensity = spec.env.intensity ?? 1;
   }
   const box = new THREE.Box3();
+  scene.updateMatrixWorld(true); // parents' transforms must be current, or grouped parts are boxed at their local positions
   scene.traverse((node) => { if ((node.isMesh || node.isLineSegments) && !node.userData.effect && !node.parent?.userData.effect) box.expandByObject(node, false); });
   const centre = box.getCenter(new THREE.Vector3());
   const radius = box.getSize(new THREE.Vector3()).length() / 2 || 100;

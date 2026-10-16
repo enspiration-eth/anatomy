@@ -19,6 +19,8 @@ export const RAMPS = {
   // Activation: resting muscle (dark) to the depolarising wavefront (bright), for conduction maps.
   activation: [[0, "#3a1418"], [0.6, "#d0603a"], [1, "#fff0b0"]],
   // Blood by oxygen saturation, 60% (dark, purplish) to 100% (bright red); never blue, which is a convention.
+  // Body-surface potential: negative blue, zero the skin tone, positive red (diverging, neutral reads as skin).
+  potential: [[0, "#2a55c8"], [0.35, "#a3b4dc"], [0.5, "#f0b48c"], [0.65, "#ee9478"], [1, "#c8322a"]],
   oxygen: [[0, "#3c1838"], [0.4, "#6a1a34"], [0.75, "#a51f2c"], [1, "#d8322c"]],
   // A neutral grey ramp, for tone gradients that are not data.
   tone: [[0, "#2a2a2a"], [1, "#d4d4d4"]],
@@ -431,6 +433,24 @@ void main() {
 }`,
     });
   },
+  // A field line: an additive glowing line on a tube (uv.x along it) with dashes travelling in the field's
+  // direction; uLevel is the field strength on the figure's display scale (0 hides it). An effect.
+  fieldline({ uniforms, theme }) {
+    const dark = theme === "dark";
+    return new THREE.ShaderMaterial({
+      uniforms: uniformsOf({ uTime: 0, uLevel: 1, uSpeed: 0.3, uDash: 6, uColor: "#ff7a3a" }, uniforms),
+      transparent: true, depthWrite: false, blending: dark ? THREE.AdditiveBlending : THREE.NormalBlending,
+      vertexShader: "varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main() { vUv = uv; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
+      fragmentShader: `uniform float uTime, uLevel, uSpeed, uDash; uniform vec3 uColor; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+${NOISE}${DITHER}
+void main() {
+  float core = pow(abs(dot(normalize(vN), normalize(vV))), 1.5);
+  float dash = 0.35 + 0.65 * smoothstep(0.0, 0.5, sin((vUv.x * uDash - uTime * uSpeed) * 6.2831853) * 0.5 + 0.5);
+  float k = clamp(uLevel, 0.0, 1.0) * core * dash;
+  gl_FragColor = vec4(uColor * ${dark ? "1.4" : "0.85"} + dither(gl_FragCoord.xy), k * ${dark ? "0.9" : "0.95"});
+}`,
+    });
+  },
   // Cherenkov light: the blue glow of water round a running core, where charged particles outrun light in water.
   // On a cylinder or sphere filling the core; brightest looking through the most water; uLevel is reactor power.
   cherenkov({ uniforms, theme }) {
@@ -530,4 +550,97 @@ export function instancesOf(part, material) {
   });
   mesh.instanceMatrix.needsUpdate = true;
   return mesh;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Implicit surfaces: smooth organic forms (a body, a hand, a bone) as a signed distance field of round cones
+// and ellipsoids joined with a smooth minimum, meshed with surface nets at `cell` resolution, relaxed, and
+// shaded with normals from the field's gradient, so the result is high-poly and smooth, never faceted.
+const smin = (a, b, k) => { if (k <= 0) return Math.min(a, b); const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+/** Signed distance of one shape at (x, y, z). Shapes: ["cone", a, b, ra, rb, k?] | ["ellipsoid", c, [rx, ry, rz], k?]. */
+export function shapeDistance(s, x, y, z) {
+  if (s[0] === "ellipsoid") {
+    const [, c, r] = s, px = (x - c[0]) / r[0], py = (y - c[1]) / r[1], pz = (z - c[2]) / r[2];
+    const k0 = Math.hypot(px, py, pz), k1 = Math.hypot(px / r[0], py / r[1], pz / r[2]);
+    return k1 === 0 ? -Math.min(...r) : (k0 * (k0 - 1)) / k1;
+  }
+  // Round cone between a (radius ra) and b (radius rb) (after Inigo Quilez's sdRoundCone).
+  const [, a, b, ra, rb] = s;
+  const bax = b[0] - a[0], bay = b[1] - a[1], baz = b[2] - a[2], l2 = bax * bax + bay * bay + baz * baz, rr = ra - rb, a2 = l2 - rr * rr, il2 = 1 / l2;
+  const pax = x - a[0], pay = y - a[1], paz = z - a[2], yy = pax * bax + pay * bay + paz * baz, zz = yy - l2;
+  const qx = pax * l2 - bax * yy, qy = pay * l2 - bay * yy, qz = paz * l2 - baz * yy, x2 = qx * qx + qy * qy + qz * qz, y2 = yy * yy * l2, z2 = zz * zz * l2;
+  const k = Math.sign(rr) * rr * rr * x2;
+  if (Math.sign(zz) * a2 * z2 > k) return Math.sqrt(x2 + z2) * il2 - rb;
+  if (Math.sign(yy) * a2 * y2 < k) return Math.sqrt(x2 + y2) * il2 - ra;
+  return (Math.sqrt(x2 * a2 * il2) + yy * rr) * il2 - ra;
+}
+const shapeBox = (s) => s[0] === "ellipsoid" ? [s[1].map((c, i) => c - s[2][i]), s[1].map((c, i) => c + s[2][i])] : [[0, 1, 2].map((i) => Math.min(s[1][i] - s[3], s[2][i] - s[4])), [0, 1, 2].map((i) => Math.max(s[1][i] + s[3], s[2][i] + s[4]))];
+/** Samples the blended field on a grid: { field, n:[nx,ny,nz], o:[x0,y0,z0], cell }. Each shape only touches its box. */
+export function implicitField({ shapes, cell = 4, blend = 20 }) {
+  const boxes = shapes.map(shapeBox), pad = blend + cell * 3;
+  const lo = [0, 1, 2].map((i) => Math.min(...boxes.map((b) => b[0][i])) - pad), hi = [0, 1, 2].map((i) => Math.max(...boxes.map((b) => b[1][i])) + pad);
+  const n = [0, 1, 2].map((i) => Math.ceil((hi[i] - lo[i]) / cell) + 1), field = new Float32Array(n[0] * n[1] * n[2]).fill(1e6);
+  shapes.forEach((s, si) => {
+    const k = s[0] === "ellipsoid" ? s[3] ?? blend : s[5] ?? blend, [b0, b1] = boxes[si];
+    const i0 = [0, 1, 2].map((i) => Math.max(0, Math.floor((b0[i] - k - cell * 2 - lo[i]) / cell))), i1 = [0, 1, 2].map((i) => Math.min(n[i] - 1, Math.ceil((b1[i] + k + cell * 2 - lo[i]) / cell)));
+    for (let kz = i0[2]; kz <= i1[2]; kz++) for (let ky = i0[1]; ky <= i1[1]; ky++) for (let kx = i0[0]; kx <= i1[0]; kx++) {
+      const idx = kx + n[0] * (ky + n[1] * kz);
+      field[idx] = smin(field[idx], shapeDistance(s, lo[0] + kx * cell, lo[1] + ky * cell, lo[2] + kz * cell), k);
+    }
+  });
+  return { field, n, o: lo, cell };
+}
+/** Meshes an implicit part: surface nets, `relax` Laplacian passes, gradient normals. */
+export function implicitGeometry(part) {
+  const { field, n, o, cell } = implicitField(part), [nx, ny] = n, at = (x, y, z) => field[x + nx * (y + ny * z)];
+  const vid = new Int32Array(n[0] * n[1] * n[2]).fill(-1), pos = [];
+  const corner = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
+  const edges = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+  const v = new Float32Array(8);
+  for (let z = 0; z < n[2] - 1; z++) for (let y = 0; y < ny - 1; y++) for (let x = 0; x < nx - 1; x++) {
+    let inside = 0;
+    for (let c = 0; c < 8; c++) { v[c] = at(x + corner[c][0], y + corner[c][1], z + corner[c][2]); if (v[c] < 0) inside++; }
+    if (inside === 0 || inside === 8) continue;
+    let sx = 0, sy = 0, sz = 0, m = 0;
+    for (const [a, b] of edges) {
+      if ((v[a] < 0) === (v[b] < 0)) continue;
+      const t = v[a] / (v[a] - v[b]);
+      sx += corner[a][0] + (corner[b][0] - corner[a][0]) * t; sy += corner[a][1] + (corner[b][1] - corner[a][1]) * t; sz += corner[a][2] + (corner[b][2] - corner[a][2]) * t; m++;
+    }
+    vid[x + nx * (y + ny * z)] = pos.length / 3;
+    pos.push(o[0] + (x + sx / m) * cell, o[1] + (y + sy / m) * cell, o[2] + (z + sz / m) * cell);
+  }
+  const index = [], quad = (a, b, c, d, flip) => { if (a < 0 || b < 0 || c < 0 || d < 0) return; flip ? index.push(a, c, b, a, d, c) : index.push(a, b, c, a, c, d); };
+  const V = (x, y, z) => vid[x + nx * (y + ny * z)];
+  for (let z = 1; z < n[2] - 1; z++) for (let y = 1; y < ny - 1; y++) for (let x = 1; x < nx - 1; x++) {
+    const inA = at(x, y, z) < 0;
+    if (inA !== (at(x + 1, y, z) < 0)) quad(V(x, y - 1, z - 1), V(x, y, z - 1), V(x, y, z), V(x, y - 1, z), !inA);
+    if (inA !== (at(x, y + 1, z) < 0)) quad(V(x - 1, y, z - 1), V(x - 1, y, z), V(x, y, z), V(x, y, z - 1), !inA);
+    if (inA !== (at(x, y, z + 1) < 0)) quad(V(x - 1, y - 1, z), V(x, y - 1, z), V(x, y, z), V(x - 1, y, z), !inA);
+  }
+  // Normals from the field's gradient (trilinear), so shading is smooth across every vertex.
+  const sample = (X, Y, Z) => { const fx = (X - o[0]) / cell, fy = (Y - o[1]) / cell, fz = (Z - o[2]) / cell; const x0 = Math.max(0, Math.min(nx - 2, Math.floor(fx))), y0 = Math.max(0, Math.min(ny - 2, Math.floor(fy))), z0 = Math.max(0, Math.min(n[2] - 2, Math.floor(fz))); const tx = fx - x0, ty = fy - y0, tz = fz - z0; let s = 0; for (let c = 0; c < 8; c++) { const [cx, cy, cz] = corner[c]; s += at(x0 + cx, y0 + cy, z0 + cz) * (cx ? tx : 1 - tx) * (cy ? ty : 1 - ty) * (cz ? tz : 1 - tz); } return s; };
+  // Relax: move each vertex toward its neighbours' mean, removing the grid's terracing.
+  const count = pos.length / 3, nb = Array.from({ length: count }, () => new Set());
+  for (let i = 0; i < index.length; i += 3) for (let j = 0; j < 3; j++) { nb[index[i + j]].add(index[i + (j + 1) % 3]); nb[index[i + j]].add(index[i + (j + 2) % 3]); }
+  let p = Float32Array.from(pos);
+  for (let pass = 0; pass < (part.relax ?? 2); pass++) {
+    const q = new Float32Array(p.length);
+    for (let i = 0; i < count; i++) { let ax = 0, ay = 0, az = 0; for (const j of nb[i]) { ax += p[j * 3]; ay += p[j * 3 + 1]; az += p[j * 3 + 2]; } const s = nb[i].size || 1; q[i * 3] = p[i * 3] * 0.5 + (ax / s) * 0.5; q[i * 3 + 1] = p[i * 3 + 1] * 0.5 + (ay / s) * 0.5; q[i * 3 + 2] = p[i * 3 + 2] * 0.5 + (az / s) * 0.5; }
+    p = q;
+  }
+  // Relaxing shrinks curved parts; project each vertex back onto the surface along the field's gradient.
+  const hh = cell * 0.5;
+  for (let step = 0; step < 2; step++) for (let i = 0; i < count; i++) {
+    const X = p[i * 3], Y = p[i * 3 + 1], Z = p[i * 3 + 2], f = sample(X, Y, Z);
+    const gx = (sample(X + hh, Y, Z) - sample(X - hh, Y, Z)) / (2 * hh), gy = (sample(X, Y + hh, Z) - sample(X, Y - hh, Z)) / (2 * hh), gz = (sample(X, Y, Z + hh) - sample(X, Y, Z - hh)) / (2 * hh), g2 = gx * gx + gy * gy + gz * gz;
+    if (g2 > 1e-6) { const k = Math.max(-cell, Math.min(cell, f / g2)); p[i * 3] -= gx * k; p[i * 3 + 1] -= gy * k; p[i * 3 + 2] -= gz * k; }
+  }
+  const normals = new Float32Array(p.length), h = cell * 0.5;
+  for (let i = 0; i < count; i++) { const X = p[i * 3], Y = p[i * 3 + 1], Z = p[i * 3 + 2]; let gx = sample(X + h, Y, Z) - sample(X - h, Y, Z), gy = sample(X, Y + h, Z) - sample(X, Y - h, Z), gz = sample(X, Y, Z + h) - sample(X, Y, Z - h); const l = Math.hypot(gx, gy, gz) || 1; normals[i * 3] = gx / l; normals[i * 3 + 1] = gy / l; normals[i * 3 + 2] = gz / l; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  g.setIndex(count > 65535 ? new THREE.Uint32BufferAttribute(index, 1) : new THREE.Uint16BufferAttribute(index, 1));
+  return g;
 }

@@ -16,6 +16,7 @@ export const KINDS = {
   extrude: { need: ["outline", "depth"] }, // outline [[a, b], ...] in plane "xy" (default, extruded up z) or "xz" (extruded along +y) // a flat disc in the part's xy plane, uv 0..1 across it (dial faces)
   instances: { need: ["shape", "items"] }, // one geometry drawn many times: shape box|cylinder|sphere, items [[x, y, z, rz?], ...]
   plane: { need: ["size"] }, // size [w, h] in the part's xy plane; optional screen: [px w, px h] for a canvas texture
+  implicit: { need: ["shapes"] }, // a smooth SDF body: shapes [["cone", a, b, ra, rb, k?] | ["ellipsoid", c, [rx, ry, rz], k?]], cell (mm), blend, relax
   group: { need: [] },
 };
 
@@ -35,8 +36,9 @@ export const SHADER_NAMES = {
   flow: { effect: false, uniforms: ["uTime", "uLevel", "uSpeed", "uStripes", "uA", "uB", "uBand"] },
   cherenkov: { effect: true, uniforms: ["uTime", "uLevel", "uColor"] },
   steam: { effect: true, uniforms: ["uTime", "uLevel", "uRise"] },
+  fieldline: { effect: true, uniforms: ["uTime", "uLevel", "uSpeed", "uDash", "uColor"] },
 };
-export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "activation", "oxygen", "tone"];
+export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "activation", "oxygen", "potential", "tone"];
 const MATERIAL_RANGES = { metal: [0, 1], rough: [0, 1], transmission: [0, 1], ior: [1, 2.5], thickness: [0, 500], clearcoat: [0, 1], clearcoatRough: [0, 1], sheen: [0, 1], iridescence: [0, 1], tintDistance: [0.1, 1e6] };
 const isHex = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const isUniform = (value) => isNum(value) || isHex(value) || (Array.isArray(value) && (value.length === 2 || value.length === 3) && value.every(isNum));
@@ -81,6 +83,7 @@ function lookProblems(part, bad, name) {
       if (sh.name === "glow" && part.kind !== "sphere") bad(`${name}: a glow is a sphere round its light`);
       if (sh.name === "flow" && part.kind !== "tube") bad(`${name}: flow runs along a tube (uv.x along its length)`);
       if (sh.name === "cherenkov" && !["cylinder", "sphere"].includes(part.kind)) bad(`${name}: cherenkov fills a cylinder or sphere`);
+      if (sh.name === "fieldline" && part.kind !== "tube") bad(`${name}: a fieldline runs along a tube`);
       if (sh.name === "steam" && !(part.kind === "cylinder" && part.open)) bad(`${name}: steam needs an open cylinder (open: true)`);
       if ((sh.name === "ripple" || sh.name === "caustics") && part.kind !== "plane") bad(`${name}: a ${sh.name} shader goes on a plane`);
     }
@@ -110,6 +113,13 @@ function lookProblems(part, bad, name) {
       if (m.transmission && part.opacity !== undefined) bad(`${name}: a transmissive part is not also faded (drop opacity)`);
       if (m.transmission && m.metal > 0.1) bad(`${name}: metal does not transmit light (transmission with metal > 0.1)`);
     }
+  }
+  if (part.kind === "implicit") {
+    const vec = (v) => isVec(v, 3);
+    if (!(Array.isArray(part.shapes) && part.shapes.length >= 1 && part.shapes.every((s) => Array.isArray(s) && ((s[0] === "cone" && vec(s[1]) && vec(s[2]) && isNum(s[3]) && isNum(s[4]) && s[3] > 0 && s[4] > 0) || (s[0] === "ellipsoid" && vec(s[1]) && vec(s[2]) && s[2].every((r) => r > 0))))))
+      bad(`${name}: shapes are ["cone", a, b, ra, rb, k?] or ["ellipsoid", centre, [rx, ry, rz], k?]`);
+    if (part.cell !== undefined && !(isNum(part.cell) && part.cell > 0)) bad(`${name}: cell must be a positive size`);
+    if (part.relax !== undefined && !(Number.isInteger(part.relax) && part.relax >= 0 && part.relax <= 6)) bad(`${name}: relax is 0 to 6 passes`);
   }
   if (part.kind === "instances") {
     if (!["box", "cylinder", "sphere"].includes(part.shape)) bad(`${name}: instances shape must be box, cylinder or sphere`);

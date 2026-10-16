@@ -270,3 +270,55 @@ uniform (`g.uniforms.uA.value.copy(colour)`) rather than reassigning it: the sha
   thin oxide film that gives blued screws their colour.
 - Brushed rhodium bridges: set the texture's `color` (`#d4d8de`). The theme-aware default is a dark grey meant
   for machinery, and it makes a movement look like cast iron.
+
+## 9. Organic forms and fields: implicit surfaces, field lines, potential maps (the body, Fig 9)
+
+### `kind: "implicit"`: high-poly smooth bodies
+
+```js
+add({ id: "body", kind: "implicit", cell: 4, blend: 20, relax: 2, shapes: [
+  ["ellipsoid", [0, 4, 1638], [74, 92, 106], 18],      // centre, radii, own blend
+  ["cone", [0, 14, 1545], [0, 8, 1420], 50, 58, 30],   // round cone: a, b, ra, rb, own blend
+  ... ], color: "#e2bfa3", rough: 0.48, material: { sheen: 0.6, clearcoat: 0.06 }, edges: false });
+```
+
+- How it's built: the shapes are combined into one signed distance field with a smooth minimum (`blend` in
+  mm), sampled on a grid of `cell` mm and meshed with surface nets. The mesh is relaxed `relax` times, then
+  projected back onto the surface. Normals come from the field's gradient, so shading is smooth at every
+  vertex and there are no facets.
+- Resolution: `cell` 4 on a 1.75 m body gives about 150,000 vertices and 300,000 triangles in about 1 s.
+  `cell` 3.5 doubles that. Keep `cell` at no more than a fifth of the thinnest feature: fingers at 7–9 mm
+  radius need ≤ 4.
+- Each shape only touches the grid cells near its own box, so cost grows with surface area, not volume.
+- Use it for anything organic: bodies, hands, bones, fruit. Don't use it for machined parts; lathe and
+  extrude give exact edges.
+- Fails when:
+  - blends are too wide (above ~40 mm), which melts joints into blobs;
+  - a cone's radius is smaller than `cell`, so it vanishes;
+  - shapes leave gaps larger than the blend, so the body splits.
+  Check with a scale-3 close-up of a shoulder, a hand and the face, with the field effects turned off.
+- To place things on the skin, march a ray through the same field (`skinDistance`, `onSkin` in the biofield
+  example). The test checks that every electrode sits within 1 mm of the surface.
+- Paint works on it: `fig.paint` on 150,000 vertices costs a few milliseconds, so repaint every third frame.
+
+### `fieldline` shader
+
+An additive glowing line on a `tube` (uv.x runs along it) with dashes that travel in the field's direction.
+Uniforms: `uLevel` (display strength, 0 hides it), `uSpeed`, `uDash`, `uColor`. It's an effect, so it doesn't
+count as a solid.
+
+- Draw the physics of the source. A current dipole (heart, cortex) has magnetic field lines that are circles
+  about its axis (Biot–Savart), so build rings in a group and turn the group to the dipole with a quaternion.
+  A uniform field (the Earth's) is drawn as parallel lines at its dip angle.
+- Brightness is a display scale. Say so, and put the true ratios on a log chart.
+
+### `potential` ramp
+
+Diverging blue (−) → skin tone (0) → red (+), so a body with no potential just reads as skin. For an ECG map,
+use V ∝ p·r/|r|³ from the heart dipole, put through `0.5 + 0.5·tanh(V/scale)`.
+
+### Kit fix: grouped parts and framing
+
+The fit box and shadow floor were computed before parents' world matrices were updated, so parts inside
+moved groups were boxed at their local positions. That dropped the floor and left empty space under some
+figures. The runtime now calls `scene.updateMatrixWorld(true)` first.

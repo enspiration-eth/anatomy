@@ -275,3 +275,45 @@ test("the watch figure: valid hero, exact train ratios, meshing centre distances
   assert.ok(h >= M.FACTS.reserveH[0] && h <= M.FACTS.reserveH[1], `reserve ${h} h`);
   for (const p of [M.W.barrel, M.BAL]) assert.ok(Math.hypot(...p.at) + (p === M.BAL ? p.r + 5 : pitch(p.N, p.m) + p.m) < 128, "inside the plate");
 });
+
+test("implicit surfaces: validation and a smooth, closed, high-resolution mesh", async () => {
+  assert.match(problemsOf([{ id: "b", kind: "implicit", shapes: [["blob", [0, 0, 0]]] }]), /shapes are/);
+  assert.match(problemsOf([{ id: "b", kind: "implicit", shapes: [["ellipsoid", [0, 0, 0], [5, 5, 5]]], relax: 9 }]), /relax/);
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [1, 1, 1], shader: { name: "fieldline" } }]), /fieldline runs along a tube/);
+  const { implicitGeometry, shapeDistance } = await import("../kit/three-looks.js");
+  assert.ok(Math.abs(shapeDistance(["ellipsoid", [0, 0, 0], [10, 10, 10]], 20, 0, 0) - 10) < 1e-9);
+  assert.ok(Math.abs(shapeDistance(["cone", [0, 0, 0], [0, 0, 50], 5, 5], 15, 0, 25) - 10) < 1e-9);
+  const g = implicitGeometry({ shapes: [["ellipsoid", [0, 0, 0], [40, 30, 20]]], cell: 2 });
+  const pos = g.attributes.position, nrm = g.attributes.normal;
+  assert.ok(pos.count > 2000);
+  // Vertices lie on the surface and normals point outward (smooth shading from the field gradient).
+  let worst = 0;
+  for (let i = 0; i < pos.count; i += 7) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), r = Math.hypot(x / 40, y / 30, z / 20);
+    worst = Math.max(worst, Math.abs(r - 1));
+    assert.ok(nrm.getX(i) * x / 1600 + nrm.getY(i) * y / 900 + nrm.getZ(i) * z / 400 > 0, "normal points outward");
+  }
+  assert.ok(worst < 0.08, `surface error ${worst}`);
+});
+
+test("the biofield figure: valid hero, high-poly body, measured magnitudes and fall-off", async () => {
+  const B = await import("../examples/biofield-3d/scene.mjs");
+  assert.deepEqual(validateScene(B.scene), []);
+  assert.ok(solidCount(B.scene) >= 80);
+  const { implicitGeometry } = await import("../kit/three-looks.js");
+  const body = B.scene.parts.find((p) => p.id === "body");
+  const g = implicitGeometry(body);
+  assert.ok(g.index.count / 3 > 200000, `body has ${g.index.count / 3} triangles`);
+  // Fall-off reproduces the KRISS ratios within 2%, and 100 pT at 10 mm.
+  assert.ok(Math.abs(B.heartPtAt(10) - B.FACTS.heartPeakPtAt10mm) < 1e-9);
+  B.FACTS.falloff.d.forEach((d, i) => assert.ok(Math.abs(B.heartPtAt(d) / B.heartPtAt(20) - B.FACTS.falloff.rel[i]) < 0.02, `${d} mm`));
+  // Ordering of magnitudes (tesla): brain < heart < urban noise < Earth < MRI.
+  const brain = B.FACTS.brainFt.alpha * 1e-15, heart = B.heartPtAt(10) * 1e-12, urban = B.FACTS.urbanFt * 1e-15, earth = B.FACTS.earthUt[0] * 1e-6;
+  assert.ok(brain < heart && heart < urban && urban < earth && earth < B.FACTS.mriT[0]);
+  // The dipole peaks at the R wave and lead II is positive there.
+  let peak = 0, at = 0; for (let t = 0; t < 0.83; t += 0.001) { const m = Math.hypot(...B.heartDipole(t)); if (m > peak) { peak = m; at = t; } }
+  assert.ok(Math.abs(at - 0.215) < 0.01 && B.leadII(B.heartDipole(at)) > 0.8);
+  // Electrodes sit on the skin.
+  for (const p of B.scene.parts.filter((q) => /^(ecg|emg)-.*-mount$/.test(q.id))) assert.ok(Math.abs(B.skinDistance(...p.at)) < 1, `${p.id} on the skin`);
+  assert.ok(B.SOURCES.every(([, , u]) => u.startsWith("https://")));
+});

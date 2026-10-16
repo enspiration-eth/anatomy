@@ -4,6 +4,17 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 
 ## Unreleased (three.js fork)
 
+### Body electromagnetic fields figure, implicit surfaces
+
+- `examples/biofield-3d`: a smooth, high-poly (about 300k triangles) human body with only its measured fields:
+  - the heart's magnetic field (MCG, 100 pT at 10 mm), drawn as current-dipole field-line rings turning through the beat;
+  - the ECG surface potential painted on the skin;
+  - the brain's alpha-rhythm field (MEG, about 1 pT) inside a sensor helmet;
+  - nerve impulses at 55 m/s driving forearm EMG;
+  - the Earth's field for scale.
+  A movable SQUID dewar shows the measured fall-off: a dipole fit to the KRISS data. A log chart runs from fT to the 3 T of an MRI scanner. All of it is cited, with no 'aura'.
+- Kit: `implicit` kind (SDF of round cones and ellipsoids, surface nets, relaxation, surface projection, gradient normals), `fieldline` shader, `potential` ramp. Framing fix: world matrices are updated before the fit box, so grouped parts are framed and shadowed correctly.
+
 ### Heart and reactor figures, flow looks
 
 - `examples/heart-3d`: a four-chamber section of the human heart. Fibre-textured walls are hatched, and the blood is clipped and filled with oxygen-saturation vertex colours (75% right, 95% left). Four valves open and close on a cardiac-cycle model through the Merck average pressures. The conduction wave runs SA → AV → His → bundle branches, the vessels and coronaries carry flow shaders, and a monitor shows the Wiggers diagram and ECG. Step through the phases, play or pause, and set the heart rate from 40 to 180 bpm.

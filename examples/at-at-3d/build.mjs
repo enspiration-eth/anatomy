@@ -95,14 +95,16 @@ function drawSnow() {
   fig.paint("snowfield", (x, y, z) => Math.min(dark ? 1 : 0.86, Math.max(0, 0.78 + z / 22)), SNOW_RAMP);
 }
 // ---------- falling snow
+// fewer falling flakes on the low-memory (phone) profile
+const NFLAKES = fig.lowMemory ? Math.round(NSNOW * 0.4) : NSNOW;
 const flakes = P("flakes"), fpos = [], fm = new THREE.Matrix4(), fq = new THREE.Quaternion(), fv = new THREE.Vector3(), fs = new THREE.Vector3(1, 1, 1);
-for (let i = 0; i < NSNOW; i++) { const h = Math.sin(i * 12.9898) * 43758.5453; fpos.push([(h - Math.floor(h) - 0.5) * GROUND.w, ((Math.sin(i * 78.233) * 43758.5453) % 1) * GROUND.d / 2, ((i * 37) % 640), 28 + (i % 7) * 7]); }
+for (let i = 0; i < NFLAKES; i++) { const h = Math.sin(i * 12.9898) * 43758.5453; fpos.push([(h - Math.floor(h) - 0.5) * GROUND.w, ((Math.sin(i * 78.233) * 43758.5453) % 1) * GROUND.d / 2, ((i * 37) % 640), 28 + (i % 7) * 7]); }
 function snowfall(dt) {
-  for (let i = 0; i < NSNOW; i++) { const f = fpos[i];
+  for (let i = 0; i < NFLAKES; i++) { const f = fpos[i];
     f[2] -= f[3] * dt; f[0] -= SPEED * 0.25 * dt + 6 * Math.sin(t * 0.7 + i) * dt;
     if (f[2] < 0) { f[2] += 640; } if (f[0] < -GROUND.w / 2) f[0] += GROUND.w;
     flakes.setMatrixAt(i, fm.compose(fv.set(f[0], f[1], f[2]), fq, fs)); }
-  flakes.instanceMatrix.needsUpdate = true;
+  flakes.count = NFLAKES; flakes.instanceMatrix.needsUpdate = true;
 }
 
 // ---------- camera

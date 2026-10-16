@@ -129,16 +129,47 @@ function geometryOf(part) {
  * Builds the scene into `stage` (an element that becomes the canvas's parent).
  * Returns { scene, camera, renderer, parts, render, toWorld }.
  */
+// A low-memory profile for phones and small GPUs (iOS Safari kills a tab whose WebGL memory runs past a few hundred
+// MB): smaller procedural textures, fewer distinct ones, a smaller shadow map and a lower pixel ratio. ?lowmem=1 forces
+// it on and ?lowmem=0 off.
+export const LOW_MEMORY = (() => {
+  if (typeof window === "undefined") return false;
+  const q = new URLSearchParams(location.search).get("lowmem");
+  if (q !== null) return q !== "0";
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return ios || matchMedia("(pointer: coarse)").matches || (navigator.deviceMemory ?? 8) <= 4;
+})();
+export const PROFILE = LOW_MEMORY ? { dpr: 1.5, textureSize: 512, texturePool: 4, shadow: 1024, antialias: false } : { dpr: 1.5, textureSize: 1024, texturePool: 8, shadow: 2048, antialias: true };
+// Procedural textures are shared: parts asking for the same look (seed folded into a small pool) reuse one set of
+// canvases and one GPU upload, instead of four 1024 px maps per part.
+const textureCache = new Map();
+function lookOf(texture, theme) {
+  const { tile, project, repeat, ...rest } = texture;
+  const spec = { ...rest, theme, size: Math.min(rest.size ?? PROFILE.textureSize, PROFILE.textureSize) };
+  if (typeof spec.seed === "number") spec.seed = Math.abs(Math.round(spec.seed)) % PROFILE.texturePool;
+  const key = JSON.stringify(spec);
+  if (!textureCache.has(key)) textureCache.set(key, TEXTURES[texture.kind](spec));
+  const look = textureCache.get(key);
+  if (!repeat) return look;
+  const copy = { ...look };
+  for (const k of ["map", "roughnessMap", "bumpMap", "aoMap"]) if (look[k]) { copy[k] = look[k].clone(); copy[k].repeat.set(...repeat); }
+  return copy;
+}
+
 export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const colors = PALETTE[theme] ?? PALETTE.dark;
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer = new THREE.WebGLRenderer({ antialias: PROFILE.antialias, alpha: true, powerPreference: LOW_MEMORY ? "low-power" : "default" });
   } catch (error) {
     stage.insertAdjacentHTML("beforeend", `<p class="iso-nogl">This figure needs WebGL.</p>`);
     return null;
   }
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, PROFILE.dpr));
+  // a lost context (the GPU process was reset or memory ran out) shows a note instead of a dead canvas; when the
+  // browser restores the context the page reloads the figure
+  renderer.domElement.addEventListener("webglcontextlost", (e) => { e.preventDefault(); stage.classList.add("iso-lost"); if (!stage.querySelector(".iso-nogl")) stage.insertAdjacentHTML("beforeend", `<p class="iso-nogl">The graphics context was lost. Tap to reload.</p>`); stage.addEventListener("click", () => location.reload(), { once: true }); });
+  renderer.domElement.addEventListener("webglcontextrestored", () => location.reload());
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   // A section: parts with cut: true are clipped at the plane, and their inside faces draw as a hatched cap.
@@ -171,12 +202,11 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     if (part.screen) return new THREE.MeshBasicMaterial({ map: screenOf(part), toneMapped: false });
     const m = part.material ?? {};
     if (!part.color && !part.emissive && !part.opacity && part.metal === undefined && !part.glass && !part.texture && !part.material && !part.colors) return null;
-    const look = part.texture ? TEXTURES[part.texture.kind]({ ...part.texture, theme }) : {};
+    const look = part.texture ? lookOf(part.texture, theme) : {};
     const base = look.plain || part.colors || m.transmission ? (part.color ?? "#ffffff") : part.color ?? (part.lit ? hex(colors.lit) : hex(colors[part.tone ?? "mid"]));
     const options = { side: THREE.DoubleSide, color: base, roughness: m.rough ?? part.rough ?? (part.glass ? 0.08 : 0.55), metalness: m.metal ?? part.metal ?? (part.glass ? 0 : 0.15) };
     for (const key of ["map", "roughnessMap", "bumpMap", "bumpScale", "aoMap", "aoMapIntensity", "alphaTest"]) if (look[key] !== undefined) options[key] = look[key];
-    if (part.texture?.repeat) for (const key of ["map", "roughnessMap", "bumpMap", "aoMap"]) options[key]?.repeat.set(...part.texture.repeat);
-    if (part.emissive) Object.assign(options, { emissive: part.emissive, emissiveIntensity: part.glow ?? 1 });
+        if (part.emissive) Object.assign(options, { emissive: part.emissive, emissiveIntensity: part.glow ?? 1 });
     if (part.colors) options.vertexColors = true;
     const physical = part.glass || m.transmission || m.clearcoat || m.sheen || m.iridescence;
     if ((part.glass && !m.transmission) || part.opacity) Object.assign(options, { transparent: true, opacity: part.opacity ?? 0.35, depthWrite: !part.glass });
@@ -264,7 +294,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   key.position.copy(centre).add(new THREE.Vector3(-0.5, -0.9, 1.6).multiplyScalar(radius * 2));
   key.target.position.copy(centre);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(PROFILE.shadow, PROFILE.shadow);
   Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: 1, far: radius * 6 });
   key.shadow.bias = -0.0005;
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(radius * 6, radius * 6), new THREE.ShadowMaterial({ opacity: theme === "dark" ? 0.45 : 0.18 }));
@@ -307,6 +337,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const ground = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   const raycaster = new THREE.Raycaster();
   const handle = {
+    profile: PROFILE, lowMemory: LOW_MEMORY,
     THREE, scene, camera, renderer, parts, screens, shaders, colors, theme, RAMPS, rampColor,
     /** Repaints a part's vertex colours: fn(x, y, z, i) in its own frame returns t (0..1 on `ramp`) or a Color. */
     paint: (id, fn, ramp) => paintVertices(parts.get(id), fn, ramp),

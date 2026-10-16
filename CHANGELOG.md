@@ -2,6 +2,9 @@
 
 All notable changes to Anatomy are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); entries from before the first release are dated.
 
+## Phones: a low-memory profile
+- Procedural textures are now cached and shared (seeds folded into a small pool). The AT-AT built about 324 separate texture maps (~340 Mpx, well over 1 GB of GPU memory with mipmaps), which crashed iOS Safari tabs; it now uses 72 (~76 Mpx) on desktop and 52 (~14 Mpx) on phones. Phones, coarse pointers and low-memory devices (or ?lowmem=1) get 512 px textures, a 1024 shadow map, no MSAA and fewer snowflakes; the pixel ratio stays capped at 1.5. A lost WebGL context shows a tap-to-reload note and reloads when the context comes back.
+
 ## AT-AT, fifth take: the underside
 - Real geometry under the belly, after the studio miniature: hip axles with bolted collars, shield-shaped drive housings with ribbed barrels running in and down, a keel with a boss and grille, panelled belly plates per module, dark bands at the module gaps, greebled lower edges, pipe runs, a belly hatch, and the notched front-module belly. A light bounced off the snow lifts the belly. A Low view (and drag or arrow keys below the horizon, kept above the snow) looks up at it.
 

@@ -196,8 +196,8 @@ add({ id: "fat-av-groove", kind: "torus", r: 50, tube: 3.5, segments: 64, at: [-
 add({ id: "fat-apex", kind: "sphere", r: 6, at: [LV.x - 22, 18, 22], color: "#e9cf86", rough: 0.7 });
 add({ id: "stand-base", kind: "cylinder", r: 46, h: 8, segments: 64, at: [-4, 40, -60], texture: { kind: "brushed", project: "box", tile: 40 }, metal: 0.8, rough: 0.35 });
 add({ id: "stand-rod", kind: "cylinder", r: 3, h: 52, at: [-4, 40, -30], color: "#c9ced4", metal: 0.9, rough: 0.2 });
-add({ id: "stand-arm", kind: "tube", points: [[-4, 40, -5], [-2, 34, -11], [8, 18, -14], [18, 6, -13]], r: 2.2, color: "#c9ced4", metal: 0.9, rough: 0.2 });
-add({ id: "stand-cradle", kind: "lathe", segments: 48, profile: [[0, 0], [9, 0], [13, 6], [11.6, 6.4], [8, 1.4], [0, 1.4]], at: [18, 6, -13], color: "#c9ced4", metal: 0.9, rough: 0.2 });
+add({ id: "stand-arm", kind: "tube", points: [[-4, 40, -5], [-2, 34, -8], [8, 18, -8], [18, 6, -5]], r: 2.2, color: "#c9ced4", metal: 0.9, rough: 0.2 });
+add({ id: "stand-cradle", kind: "lathe", segments: 48, profile: [[0, 0], [9, 0], [13, 6], [11.6, 6.4], [8, 1.4], [0, 1.4]], at: [18, 6, -5], color: "#c9ced4", metal: 0.9, rough: 0.2 });
 export const MONITOR = { x: 140, z: 40, w: 120, h: 84 };
 add({ id: "monitor", kind: "box", size: [MONITOR.w + 10, 6, MONITOR.h + 10], r: 4, at: [MONITOR.x, 8, MONITOR.z - 5], color: "#24272c", rough: 0.4 });
 add({ id: "monitor-foot", kind: "box", size: [50, 30, 4], r: 2, at: [MONITOR.x, 10, -60], color: "#24272c" });

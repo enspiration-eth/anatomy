@@ -204,3 +204,55 @@ test("validates extrusions and sections", () => {
   assert.match(problemsOf([], { section: { axis: "w", at: 0 } }), /section must be/);
   assert.match(problemsOf([{ id: "g", kind: "plane", size: [2, 2], texture: { kind: "glyph", text: "RETURN" } }]), /1 to 4 characters/);
 });
+
+test("validates flow, cherenkov and steam placement, cut fills, hatch colours and holes", () => {
+  const sec = { section: { axis: "y", at: 0 } };
+  assert.equal(problemsOf([{ id: "t", kind: "tube", points: [[0, 0, 0], [9, 0, 0]], r: 1, shader: { name: "flow", uniforms: { uA: "#ff0000", uLevel: 0.5 } } }]), "");
+  assert.match(problemsOf([{ id: "t", kind: "box", size: [2, 2, 2], shader: { name: "flow" } }]), /flow runs along a tube/);
+  assert.match(problemsOf([{ id: "c", kind: "box", size: [2, 2, 2], shader: { name: "cherenkov" } }]), /cherenkov/);
+  assert.match(problemsOf([{ id: "s", kind: "cylinder", r: 2, h: 4, shader: { name: "steam" } }]), /open cylinder/);
+  assert.equal(problemsOf([{ id: "b", kind: "sphere", r: 2, cut: "solid" }], sec), "");
+  assert.match(problemsOf([{ id: "b", kind: "sphere", r: 2, cut: "solid", hatch: "#ffffff" }], sec), /hatch/);
+  assert.match(problemsOf([{ id: "b", kind: "sphere", r: 2, cut: true, hatch: "red" }], sec), /hatch/);
+  assert.match(problemsOf([{ id: "b", kind: "box", size: [2, 2, 2], holes: [[[0, 0], [1, 0], [0, 1]]] }]), /holes/);
+  assert.equal(problemsOf([{ id: "w", kind: "sphere", r: 2, texture: { kind: "fiber", seed: 3 } }, { id: "k", kind: "box", size: [2, 2, 2], texture: { kind: "concrete" } }]), "");
+});
+
+test("the heart figure: valid hero, Merck pressure ordering, valves consistent with pressures", async () => {
+  const H = await import("../examples/heart-3d/scene.mjs");
+  assert.deepEqual(validateScene(H.scene), []);
+  assert.ok(solidCount(H.scene) >= 80);
+  assert.equal(H.LEAFLETS.length, 8);
+  for (const bpm of [40, 72, 120, 180]) {
+    const c = H.cycleOf(bpm);
+    assert.ok(c.rapidEnd <= c.T, `${bpm} bpm: phases fit the beat`);
+    let peakLv = 0, minAo = 999;
+    for (let t = 0; t < c.T; t += c.T / 400) {
+      const p = H.pressuresAt(c, t), ph = H.phaseAt(c, t);
+      peakLv = Math.max(peakLv, p.lv); minAo = Math.min(minAo, p.ao);
+      assert.ok(p.ao >= H.FACTS.artery[1] - 1, `${bpm} bpm: aorta stays at or above diastolic`);
+      if (ph === 2 && bpm === 72) assert.ok(p.lv >= p.ao - 5, "LV at or above the aorta in ejection (aortic valve open)");
+      if (ph === 1 || ph === 3) assert.ok(p.lv < p.ao + 1, "aortic valve shut in isovolumetric phases");
+      assert.ok(p.rv <= p.lv + 1 && p.pa <= p.ao, "right heart below the left");
+    }
+    if (bpm === 72) { assert.ok(Math.abs(peakLv - H.FACTS.lv[0]) < 12, `peak LV ${peakLv}`); assert.ok(Math.abs(minAo - H.FACTS.artery[1]) < 3); }
+  }
+  assert.ok(H.SAT_T.left > H.SAT_T.right);
+  assert.ok(H.SOURCES.every(([, , url]) => url.startsWith("https://")));
+});
+
+test("the reactor figure: valid hero, published reference numbers, rods lower power", async () => {
+  const R = await import("../examples/reactor-3d/scene.mjs");
+  assert.deepEqual(validateScene(R.scene), []);
+  assert.ok(solidCount(R.scene) >= 80);
+  const F = R.FACTS;
+  assert.equal(F.assemblies * F.rodsPer, F.rods);
+  assert.ok(Math.abs(F.mwe / F.mwt - F.eff / 100) < 0.01);
+  assert.ok(Math.abs(F.psia * 0.00689476 - F.mpa) < 0.05);
+  assert.ok(Math.abs(R.plantAt(1).tHot - F.tOut) < 1, "hot leg at full power matches the published outlet");
+  let last = 2;
+  for (let i = 0; i <= 10; i++) { const p = R.powerFor(i / 10); assert.ok(p <= last + 1e-9); last = p; }
+  assert.equal(R.powerFor(0), 1);
+  assert.ok(R.powerFor(1) <= 0.02 + 1e-9);
+  assert.ok(R.SOURCES.every(([, , url]) => url.startsWith("https://")));
+});

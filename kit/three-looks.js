@@ -16,6 +16,10 @@ export const RAMPS = {
   depth: [[0, "#c9eef7"], [0.5, "#3b8fb0"], [1, "#0d2a3d"]],
   // Steel temper colours: the oxide a steel surface takes as it is heated in air.
   temper: [[0, "#c9ced4"], [0.25, "#e2d28a"], [0.45, "#c08a42"], [0.65, "#7b3f86"], [0.85, "#3f57b8"], [1, "#6d8fa8"]],
+  // Activation: resting muscle (dark) to the depolarising wavefront (bright), for conduction maps.
+  activation: [[0, "#3a1418"], [0.6, "#d0603a"], [1, "#fff0b0"]],
+  // Blood by oxygen saturation, 60% (dark, purplish) to 100% (bright red); never blue, which is a convention.
+  oxygen: [[0, "#3c1838"], [0.4, "#6a1a34"], [0.75, "#a51f2c"], [1, "#d8322c"]],
   // A neutral grey ramp, for tone gradients that are not data.
   tone: [[0, "#2a2a2a"], [1, "#d4d4d4"]],
 };
@@ -176,6 +180,38 @@ export const TEXTURES = {
     g.font = `700 ${Math.round(size * font * (text.length > 2 ? 0.7 : 1))}px ui-monospace, Menlo, monospace`;
     g.fillText(text, size / 2, size / 2 + size * 0.03);
     return { map: tex(c, { repeat: false }), plain: true, alphaTest: 0.25 };
+  },
+  // Muscle: wavy parallel fibres along u (striated myocardium) with darker clefts; bump follows the clefts.
+  fiber({ seed = 13, size = 1024, color = "#8e3030", waves = 3 }) {
+    const [c, g] = canvasOf(size), [b, gb] = canvasOf(size), rnd = seeded(seed);
+    g.fillStyle = color; g.fillRect(0, 0, size, size);
+    gb.fillStyle = "#909090"; gb.fillRect(0, 0, size, size);
+    for (let y = 0; y < size; y += 3 + rnd() * 3) {
+      const amp = 2 + rnd() * 4, ph = rnd() * 6.28, dark = 0.12 + rnd() * 0.18;
+      g.strokeStyle = `rgba(30,0,0,${dark})`; gb.strokeStyle = `rgba(20,20,20,${0.5 + rnd() * 0.3})`;
+      g.lineWidth = gb.lineWidth = 1 + rnd() * 1.2;
+      g.beginPath(); gb.beginPath();
+      for (let x = 0; x <= size; x += 8) {
+        const yy = y + Math.sin((x / size) * Math.PI * 2 * waves + ph) * amp;
+        x ? (g.lineTo(x, yy), gb.lineTo(x, yy)) : (g.moveTo(x, yy), gb.moveTo(x, yy));
+      }
+      g.stroke(); gb.stroke();
+    }
+    for (let i = 0; i < size * 2; i++) { g.fillStyle = `rgba(255,220,220,${rnd() * 0.05})`; g.fillRect(rnd() * size, rnd() * size, 6 + rnd() * 20, 1); }
+    return { map: tex(c), bumpMap: tex(b, { srgb: false }), bumpScale: 0.5, plain: true };
+  },
+  // Concrete: a cement ground with aggregate and pores; bump carries the pores. Theme-aware grey.
+  concrete({ seed = 17, size = 1024, theme }) {
+    const [c, g] = canvasOf(size), [b, gb] = canvasOf(size), rnd = seeded(seed);
+    g.fillStyle = theme === "light" ? "#cfcdc6" : "#6a6863"; g.fillRect(0, 0, size, size);
+    gb.fillStyle = "#909090"; gb.fillRect(0, 0, size, size);
+    for (let i = 0; i < size * 4; i++) {
+      const x = rnd() * size, y = rnd() * size, r = 0.5 + rnd() * rnd() * 5, v = rnd();
+      g.fillStyle = v > 0.6 ? `rgba(255,255,250,${0.05 + rnd() * 0.08})` : `rgba(0,0,0,${0.04 + rnd() * 0.1})`;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      if (v < 0.08) { gb.fillStyle = "#303030"; gb.beginPath(); gb.arc(x, y, r * 0.8, 0, Math.PI * 2); gb.fill(); }
+    }
+    return { map: tex(c), bumpMap: tex(b, { srgb: false }), bumpScale: 0.4, plain: true };
   },
   // A printed circuit board: FR-4 green, copper traces on a 45-degree router grid, pads, silkscreen outlines.
   pcb({ seed = 7, size = 1024, theme }) {
@@ -367,6 +403,67 @@ void main() {
   float edge = smoothstep(1.0, 0.86, max(abs(q.x), abs(q.y)));
   vec3 glass = vec3(0.025, 0.03, 0.03) * (1.0 - dot(q, q) * 0.3);
   gl_FragColor = vec4((glass + c) * edge + dither(gl_FragCoord.xy), 1.0);
+}`,
+    });
+  },
+  // Flow in a pipe or vessel (a tube, uv.x along its length): colour from uA at the start to uB at the end
+  // (inlet to outlet temperature, venous to arterial), lit by a fixed key, with travelling bands whose speed is
+  // uSpeed × uLevel so the reader sees which way, and how fast, the fluid moves.
+  flow({ uniforms, theme }) {
+    return new THREE.ShaderMaterial({
+      uniforms: uniformsOf({ uTime: 0, uLevel: 1, uSpeed: 0.5, uStripes: 12, uA: "#3060c0", uB: "#c03030", uBand: 0.18 }, uniforms),
+      vertexShader: "varying vec2 vUv; varying vec3 vN; void main() { vUv = uv; vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: `uniform float uTime, uLevel, uSpeed, uStripes, uBand; uniform vec3 uA, uB; varying vec2 vUv; varying vec3 vN;
+${NOISE}${DITHER}
+void main() {
+  vec3 base = mix(uA, uB, vUv.x);
+  float key = 0.42 + 0.58 * max(dot(normalize(vN), normalize(vec3(-0.35, 0.55, 0.75))), 0.0);
+  float rim = pow(1.0 - abs(normalize(vN).z), 3.0) * 0.25;
+  float phase = fract(vUv.x * uStripes - uTime * uSpeed * uLevel);
+  float band = smoothstep(0.0, 0.15, phase) * (1.0 - smoothstep(0.25, 0.5, phase));
+  float grain = noise(vec2(vUv.x * 80.0 - uTime * uSpeed * uLevel * 6.0, vUv.y * 12.0)) * 0.08;
+  vec3 c = base * key * (1.0 + uBand * band * step(0.01, uLevel) + grain) + rim * base;
+  gl_FragColor = vec4(c + dither(gl_FragCoord.xy), 1.0);
+}`,
+    });
+  },
+  // Cherenkov light: the blue glow of water round a running core, where charged particles outrun light in water.
+  // On a cylinder or sphere filling the core; brightest looking through the most water; uLevel is reactor power.
+  cherenkov({ uniforms, theme }) {
+    const dark = theme === "dark";
+    return new THREE.ShaderMaterial({
+      uniforms: uniformsOf({ uTime: 0, uLevel: 1, uColor: "#4f8dff" }, uniforms),
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: dark ? THREE.AdditiveBlending : THREE.NormalBlending,
+      vertexShader: "varying vec3 vN; varying vec3 vV; varying vec2 vUv; void main() { vUv = uv; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
+      fragmentShader: `uniform float uTime, uLevel; uniform vec3 uColor; varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+${NOISE}${DITHER}
+void main() {
+  float through = pow(abs(dot(normalize(vN), normalize(vV))), 1.2);
+  float shimmer = 0.8 + 0.2 * noise(vec2(vUv.x * 30.0, vUv.y * 10.0 + uTime * 0.6));
+  float ends = smoothstep(0.0, 0.12, vUv.y) * (1.0 - smoothstep(0.88, 1.0, vUv.y));
+  float k = clamp(through * shimmer * ends * uLevel, 0.0, 1.0);
+  gl_FragColor = vec4(mix(uColor, vec3(0.75, 0.88, 1.0), k * 0.5) * k + dither(gl_FragCoord.xy), k * 0.7);
+}`,
+    });
+  },
+  // Steam or vapour rising from an open cylinder (uv.y = 0 at the outlet): soft puffs that rise, swell and thin.
+  steam({ uniforms, theme }) {
+    const dark = theme === "dark";
+    return new THREE.ShaderMaterial({
+      uniforms: uniformsOf({ uTime: 0, uLevel: 1, uRise: 0.25 }, uniforms),
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: "varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main() { vUv = uv; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
+      fragmentShader: `uniform float uTime, uLevel, uRise; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+${NOISE}${DITHER}
+float puffAt(float a, float d) { return noise(vec2(a * 1.5, d * 3.0 - uTime * uRise * 4.0)) * 0.55 + noise(vec2(a * 4.0 + 3.0, d * 7.0 - uTime * uRise * 7.0)) * 0.3 + noise(vec2(a * 9.0, d * 15.0 - uTime * uRise * 11.0)) * 0.15; }
+void main() {
+  float d = vUv.y, a = vUv.x * 6.2831853;
+  float facing = pow(abs(dot(normalize(vN), normalize(vV))), 0.8);
+  // Blend the noise with itself one turn round so the cylinder's seam doesn't show.
+  float puff = mix(puffAt(a, d), puffAt(a - 6.2831853, d), vUv.x);
+  float k = clamp((0.25 + smoothstep(0.25, 0.85, puff) * 0.75) * facing * (1.0 - smoothstep(0.4, 1.0, d)) * smoothstep(0.0, 0.08, d) * uLevel, 0.0, 1.0);
+  vec3 c = ${dark ? "vec3(0.86, 0.88, 0.9)" : "vec3(0.62, 0.64, 0.66)"};
+  gl_FragColor = vec4(c + dither(gl_FragCoord.xy), k * 0.85);
 }`,
     });
   },

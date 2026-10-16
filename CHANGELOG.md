@@ -4,6 +4,12 @@ All notable changes to Anatomy are recorded here. The format follows [Keep a Cha
 
 ## Unreleased (three.js fork)
 
+### Heart and reactor figures, flow looks
+
+- `examples/heart-3d`: a four-chamber section of the human heart. Fibre-textured walls are hatched, and the blood is clipped and filled with oxygen-saturation vertex colours (75% right, 95% left). Four valves open and close on a cardiac-cycle model through the Merck average pressures. The conduction wave runs SA → AV → His → bundle branches, the vessels and coronaries carry flow shaders, and a monitor shows the Wiggers diagram and ECG. Step through the phases, play or pause, and set the heart rate from 40 to 180 bpm.
+- `examples/reactor-3d`: a Westinghouse four-loop PWR with one loop drawn. It shows the concrete containment, the vessel, a core painted by power density, Cherenkov glow, a draggable control-rod cluster with power lag, and a steam generator with U-tubes coloured from hot to cold. The rest of the loop is the pressurizer, pump, turbine, generator, condenser, and cooling tower with steam. The readout gives power, Thot and Tcold, pressure and MWe from MIT, Westinghouse and NRC figures.
+- Kit: `flow`, `cherenkov` and `steam` shaders; `fiber` and `concrete` textures; `oxygen` and `activation` ramps; `cut: "solid"` fills, `hatch` colours and `extrude` holes, all validated and documented in three-looks.md §8.
+
 ### Neuralink N1 figure, sections
 
 - `examples/neuralink-3d`: a hero figure of the N1 implant in a section through scalp, skull (tables and diploë), dura, CSF, cortex and white matter, with vessels; seven steps from craniectomy and robotic thread insertion to recording (spikes, on-chip detection, Bluetooth, a decoded cursor) and inductive charging. Facts are cited in the caption and a notes list; simplifications are listed.

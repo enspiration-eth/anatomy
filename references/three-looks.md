@@ -23,7 +23,8 @@ figure. Gloss for its own sake is noise, and noise in a technical figure reads a
 | `env: true \| { intensity }` | the scene | a procedural studio, prefiltered (PMREM), as the scene's environment | anything with `metal >= 0.7` or transmission |
 | `kind: "instances"` | a part | one geometry drawn many times (InstancedMesh) | identical rows: vents, slots, louvres, rivets |
 | `kind: "disc"` | a part | a flat disc whose uv spans its face | dial faces with a `dial` texture |
-| `open: true` | cylinder | no caps, 24 rows along its height | plumes and sleeves |
+| `open: true` | cylinder | no caps, 24 rows along its height | plumes, steam and sleeves |
+| `cut: "solid"`, `hatch` | a cut part | a filled, uncapped clip; a coloured hatch | blood and coolant in a section; material-coded cut faces (§8) |
 
 ## 2. Procedural textures
 
@@ -201,3 +202,54 @@ was the validator being right.
 - `window.__fig.shaders`, `window.__fig.parts.get(id).material` in an `eval` action to probe uniforms and
   materials.
 - No console warnings: a shader that fails to compile logs one, and CI fails on it.
+
+## 8. Living systems and plant: flow, Cherenkov, steam, fibre, concrete, sections with fill
+
+Added for the heart (Fig 6) and the reactor (Fig 7). Each one follows the same rule as the rest of the kit: a look
+carries a quantity, and the live code drives that quantity through a uniform or a repaint.
+
+### Textures
+
+| Kind | Draws | Options | Use on | Fails when |
+|---|---|---|---|---|
+| `fiber` | wavy parallel striations with a matching bump, like muscle fibres | `seed`, `color` (default `#8e3030`), `waves` (bend count, 3) | myocardium, tendon, woven cable | it goes on a part that is also painted: `fig.paint` clones the material to white and the striations then tint the ramp, so keep painted parts untextured |
+| `concrete` | theme grey with aggregate flecks and pore bump | `seed` | containments, basemats, pedestals, towers | it covers metal: rough 0.9 kills the environment's reflections, which is the point on concrete and wrong on steel |
+
+### Shaders
+
+| Name | On | Uniforms | What it means |
+|---|---|---|---|
+| `flow` | `tube` (uv.x runs along the path) | `uTime`, `uLevel` (0 still … 1 full flow), `uSpeed`, `uStripes`, `uA` → `uB` (colour from the first point to the last), `uBand` | a lit pipe whose bands travel at `uSpeed × uLevel`. Colour along the tube shows what the fluid carries: temperature from `fig.rampColor("heat", t)` in the reactor's legs and U-tubes, oxygen saturation in the heart's vessels |
+| `cherenkov` | `cylinder` or `sphere` (an effect) | `uTime`, `uLevel`, `uColor` | blue light from charged particles faster than light in water. Additive in the dark theme. Tie `uLevel` to power: it fades out at shutdown |
+| `steam` | open `cylinder`, uv.y = 0 at the outlet (an effect) | `uTime`, `uLevel` (density), `uRise` (speed) | puffs that rise, swell and thin out. The noise is blended across the seam, so the open cylinder shows none. CylinderGeometry puts uv.y = 0 at the top, so for a rising plume give the part `rot: [180, 0, 0]` and swap `r`/`r2` |
+
+`flow` takes colours as uniforms because a tube's vertex colours are already used for the bands. Copy into the
+uniform (`g.uniforms.uA.value.copy(colour)`) rather than reassigning it: the shader holds the Color object.
+
+### Ramps
+
+- `oxygen`: 60 % (`#3c1838`) to 100 % (`#d8322c`) saturation, so `t = (sat − 60) / 40`. Venous blood is dark red,
+  not blue. A legend that says blue is wrong.
+- `activation`: resting (`#3a1418`) → depolarising (`#d0603a`) → peak (`#fff0b0`) for electrical waves.
+  Prefer an emissive pulse on textured walls (see the fiber row above) and the ramp on untextured parts.
+
+### Sections with fill, coloured hatching, extrude holes
+
+- `cut: "solid"`: a volume such as blood, coolant or a core is clipped at the section with no hatch cap and with lit
+  backfaces, so its inside reads as filled. Use it for what flows inside a hatched wall; hatching blood would
+  read as a solid.
+- `hatch: "#hex"` (with `cut: true` only) colours the hatch lines: muscle `#b0484a`, fibrous skeleton `#d9c7a0`,
+  concrete `#8a8a84`, steel `#c9ced4`. One hatch colour per material across the figure, so a cut face says what
+  it is made of.
+- `extrude` takes `holes: [[[a, b], …], …]`: the heart's fibrous skeleton is one plate with four valve rings.
+  Holes must lie inside the outline and not touch each other. The validator checks the shape only, so look at
+  the cap.
+
+### Checks for these looks
+
+- Close-up shots at scale 3 of each cut face: the hatch must stop at the clip line, and a `"solid"` fill must
+  not show a cap.
+- Drive the quantity across its range and shoot both ends (rods in and out; diastole and ejection). The flow
+  bands must slow down, the Cherenkov glow must fade, and the steam must thin out.
+- Reduced motion: `fig.time` is not called, so the bands and puffs freeze where they are, and the levels still
+  show the state.

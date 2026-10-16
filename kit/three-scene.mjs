@@ -22,7 +22,7 @@ export const KINDS = {
 /** Procedural textures (kit/three-looks.js TEXTURES) and the options each accepts. */
 export const TEXTURE_KINDS = {
   brushed: ["color", "seed"], knurl: ["pitch"], dial: ["count", "every", "from", "step", "ring", "font", "reverse"],
-  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], pcb: ["seed"], paper: ["seed"], wood: ["seed", "color", "rings"], glyph: ["text", "ink", "font"],
+  ruler: ["from", "to", "step", "every", "label"], label: ["title", "lines", "aspect"], pcb: ["seed"], fiber: ["seed", "color", "waves"], concrete: ["seed"], paper: ["seed"], wood: ["seed", "color", "rings"], glyph: ["text", "ink", "font"],
 };
 const TEXTURE_COMMON = ["kind", "repeat", "project", "tile", "size"];
 /** The shader library (kit/three-looks.js SHADERS), whether each is an effect (not a solid) and the uniforms it takes. */
@@ -32,8 +32,11 @@ export const SHADER_NAMES = {
   caustics: { effect: false, uniforms: ["uTime", "uK", "uDecay", "uHalf", "uAmp", "uBeat", "uSource", "uLift", "uLamp", "uInside", "uFocus"] },
   crt: { effect: false, screen: true, uniforms: ["uTime", "uPower", "uWarm", "uVertical", "uLines", "uGlow", "uCurve", "uTint"] },
   glow: { effect: true, uniforms: ["uColor", "uLevel", "uPower"] },
+  flow: { effect: false, uniforms: ["uTime", "uLevel", "uSpeed", "uStripes", "uA", "uB", "uBand"] },
+  cherenkov: { effect: true, uniforms: ["uTime", "uLevel", "uColor"] },
+  steam: { effect: true, uniforms: ["uTime", "uLevel", "uRise"] },
 };
-export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "tone"];
+export const RAMP_NAMES = ["heat", "stress", "depth", "temper", "activation", "oxygen", "tone"];
 const MATERIAL_RANGES = { metal: [0, 1], rough: [0, 1], transmission: [0, 1], ior: [1, 2.5], thickness: [0, 500], clearcoat: [0, 1], clearcoatRough: [0, 1], sheen: [0, 1], iridescence: [0, 1], tintDistance: [0.1, 1e6] };
 const isHex = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const isUniform = (value) => isNum(value) || isHex(value) || (Array.isArray(value) && (value.length === 2 || value.length === 3) && value.every(isNum));
@@ -76,6 +79,9 @@ function lookProblems(part, bad, name) {
       if (part.texture || part.material || part.colors) bad(`${name}: a shader part takes no texture, material or colors (the shader is the look)`);
       if (sh.name === "plume" && !(part.kind === "cylinder" && part.open)) bad(`${name}: a plume needs an open cylinder (open: true), uv.y along the flow`);
       if (sh.name === "glow" && part.kind !== "sphere") bad(`${name}: a glow is a sphere round its light`);
+      if (sh.name === "flow" && part.kind !== "tube") bad(`${name}: flow runs along a tube (uv.x along its length)`);
+      if (sh.name === "cherenkov" && !["cylinder", "sphere"].includes(part.kind)) bad(`${name}: cherenkov fills a cylinder or sphere`);
+      if (sh.name === "steam" && !(part.kind === "cylinder" && part.open)) bad(`${name}: steam needs an open cylinder (open: true)`);
       if ((sh.name === "ripple" || sh.name === "caustics") && part.kind !== "plane") bad(`${name}: a ${sh.name} shader goes on a plane`);
     }
   }
@@ -118,7 +124,9 @@ function lookProblems(part, bad, name) {
     if (!(isNum(part.depth) && part.depth > 0)) bad(`${name}: depth must be positive`);
     if (part.plane !== undefined && !["xy", "xz"].includes(part.plane)) bad(`${name}: plane must be "xy" or "xz"`);
   }
-  if (part.cut !== undefined && part.cut !== true) bad(`${name}: cut is true or absent`);
+  if (part.cut !== undefined && part.cut !== true && part.cut !== "solid") bad(`${name}: cut is true (hatched) or "solid" (filled volume)`);
+  if (part.hatch !== undefined && !(part.cut === true && isHex(part.hatch))) bad(`${name}: hatch is a #rrggbb colour for a part with cut: true`);
+  if (part.holes !== undefined && !(part.kind === "extrude" && Array.isArray(part.holes) && part.holes.every((h) => Array.isArray(h) && h.length >= 3 && h.every((p) => isVec(p, 2))))) bad(`${name}: holes are outlines of at least three [a, b] points, on an extrude`);
   if (part.open !== undefined && part.kind !== "cylinder") bad(`${name}: open applies to cylinders`);
 }
 

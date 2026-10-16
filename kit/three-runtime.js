@@ -8,16 +8,17 @@ const PALETTE = {
   light: { bg: 0xf4f4ef, lo: 0xb9b9b1, mid: 0xd6d6cf, hi: 0xf2f2ec, faint: 0xc8c8c0, lit: 0x111111, edge: 0x3a3a36, line: 0x55554f },
 };
 
-const isEffect = (part) => part.shader && (part.shader.name === "plume" || part.shader.name === "glow");
+const isEffect = (part) => part.shader && ["plume", "glow", "cherenkov", "steam"].includes(part.shader.name);
 const rad = (deg) => (deg * Math.PI) / 180;
 
 /** Clones a material, clips it at `plane` and draws its back faces (the inside, seen through the cut) hatched. */
-function cutMaterial(source, plane) {
+function cutMaterial(source, plane, style = true, hatch) {
   const m = source.clone();
   m.clippingPlanes = [plane];
   m.side = THREE.DoubleSide;
   m.clipShadows = true;
-  const base = (m.color ?? new THREE.Color(0x888888)).clone();
+  const base = hatch ? new THREE.Color(hatch) : (m.color ?? new THREE.Color(0x888888)).clone();
+  if (style === "solid") return m; // a filled volume (blood, water): the far inside face, lit, is the fill
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uCutA = { value: base.clone().multiplyScalar(0.85) };
     shader.uniforms.uCutB = { value: base.clone().multiplyScalar(0.55) };
@@ -84,6 +85,7 @@ function geometryOf(part) {
     case "extrude": {
       // An outline in the part's xy plane (plane "xy", extruded up z) or xz plane (plane "xz", extruded along +y).
       const shape = new THREE.Shape(part.outline.map(([a, b]) => new THREE.Vector2(a, b)));
+      for (const hole of part.holes ?? []) shape.holes.push(new THREE.Path(hole.map(([a, b]) => new THREE.Vector2(a, b))));
       const g = new THREE.ExtrudeGeometry(shape, { depth: part.depth, bevelEnabled: false, curveSegments: 24 });
       return part.plane === "xz" ? g.rotateX(Math.PI / 2).translate(0, part.depth, 0) : g;
     }
@@ -181,7 +183,7 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
       node = new THREE.Mesh(geometry, custom(part) ?? material(part.tone ?? "mid", part.lit));
       if (part.kind === "plane") part.edges = part.edges ?? false;
       node.castShadow = part.kind !== "plane" && !part.glass;
-      if (part.cut && section) node.material = cutMaterial(node.material, section);
+      if (part.cut && section) node.material = cutMaterial(node.material, section, part.cut, part.hatch);
       node.receiveShadow = true;
       if (part.colors) bakeColors(node, part.colors);
       if (part.shader) node.castShadow = false;

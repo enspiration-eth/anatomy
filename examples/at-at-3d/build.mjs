@@ -29,8 +29,8 @@ const P = (id) => fig.parts.get(id), dark = fig.theme === "dark";
     if (o.isDirectionalLight) { o.color.set("#fff3e6"); o.intensity *= dark ? 1.45 : 0.85; } });
   const rim = new THREE.DirectionalLight(dark ? "#d6e2f5" : "#e8eef8", dark ? 2.0 : 1.5); rim.position.set(-900, 700, 520); fig.scene.add(rim);
   // an endless snow plain round the live heightfield, so its edges never show
-  const plainMat = new THREE.MeshStandardMaterial({ color: dark ? "#dfe5ee" : "#e4e9f0", roughness: 0.95 });
-  const plainMesh = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), plainMat); plainMesh.position.z = -1.5; plainMesh.receiveShadow = true; fig.scene.add(plainMesh);
+  const plainMat = new THREE.MeshStandardMaterial({ color: dark ? "#eef2f8" : "#eef2f7", roughness: 0.95 });
+  const plainMesh = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), plainMat); plainMesh.position.z = -16; plainMesh.receiveShadow = true; fig.scene.add(plainMesh);
   const fill = new THREE.DirectionalLight("#9fb3cc", 0.5); fill.position.set(400, -800, 200); fig.scene.add(fill);
 }
 const root = stage.closest(".iso-plate")?.parentElement ?? document.body;
@@ -40,8 +40,8 @@ const viewBtns = [...root.querySelectorAll("[data-view]")], deptBtns = [...root.
 const NAMES = { fl: "front left", fr: "front right", rl: "rear left", rr: "rear right" };
 
 // ---------- state
-let t = 1.3, walking = !still.matches, az = 36, el = 2, zoom = 2.2, sliceOn = false, sliceY = -20, open = null, hover = null, frame = 0;
-const target = new THREE.Vector3(70, 0, 250);
+let t = 1.3, walking = !still.matches, az = 36, el = 2, zoom = 2.9, sliceOn = false, sliceY = -20, open = null, hover = null, frame = 0;
+const TARGET0 = [70, 0, 250], target = new THREE.Vector3(...TARGET0);
 const tour = idleTour(6000, () => runner.kick());
 let tourClock = 0;
 const body = P("body"), head = P("head"), neck = P("neck");
@@ -209,7 +209,7 @@ stage.addEventListener("pointerup", (e) => {
 });
 stage.addEventListener("pointerleave", () => { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = null; runner.kick(); });
 stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 1.2, 8); applyView(); runner.kick(); }, { passive: false });
-const setView = (k) => { if (k === "side") { az = 0; el = 3; zoom = 1.8; } else if (k === "front") { az = -90; el = 5; zoom = 1.9; } else { az = 36; el = 2; zoom = 2.2; } applyView(); };
+const setView = (k) => { target.set(...TARGET0); if (k === "side") { az = 0; el = 3; zoom = 2.4; } else if (k === "front") { az = -90; el = 5; zoom = 2.5; } else { az = 36; el = 2; zoom = 2.9; } applyView(); };
 viewBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); setView(b.dataset.view); runner.kick(); }));
 deptBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); const d = DEPTS.find((q) => q.id === b.dataset.dept); if (open && open.id === d.id) closeCard(); else openCard(d); }));
 sliceBtn?.addEventListener("click", () => { tour.touch(); sliceOn = !sliceOn; applySlice(); runner.kick(); });
@@ -217,7 +217,7 @@ sliceIn?.addEventListener("input", () => { tour.touch(); sliceOn = true; sliceY 
 walkBtn?.addEventListener("click", () => { tour.touch(); walking = !walking && !still.matches; walkBtn.setAttribute("aria-pressed", String(walking)); walkBtn.textContent = walking ? "Space Pause walk" : "Space Walk"; runner.kick(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) { closeCard(); e.preventDefault(); } });
 stage.addEventListener("keydown", (e) => {
-  if (e.key === "[" || e.key === "]") { sliceOn = true; sliceY = clamp(sliceY + (e.key === "]" ? 10 : -10), -120, 120); applySlice(); }
+  if (e.key === "[" || e.key === "]") { sliceOn = true; sliceY = clamp(sliceY + (e.key === "]" ? 5 : -5), -70, 70); applySlice(); }
   else if (e.key === "s" || e.key === "S") { sliceOn = !sliceOn; applySlice(); }
   else if (e.key === "ArrowLeft" || e.key === "ArrowRight") { az += e.key === "ArrowRight" ? 10 : -10; applyView(); }
   else if (e.key === "ArrowUp" || e.key === "ArrowDown") { el = clamp(el + (e.key === "ArrowUp" ? 5 : -5), 2, 80); applyView(); }
@@ -256,7 +256,7 @@ for (let k = 0; k < 14 * 30; k++) { advance(1 / 30); pose(t, bobAt(t)); }
 if (still.matches) t = 2.0;
 snowfall(0); applyView(); applySlice(); draw(0);
 if (walkBtn) { walkBtn.setAttribute("aria-pressed", String(walking)); walkBtn.textContent = walking ? "Space Pause walk" : "Space Walk"; }
-window.__atat = { open: (id) => openCard(DEPTS.find((d) => d.id === id)), close: closeCard, get card() { return open && open.id; }, prints, fig, setSlice: (y) => { sliceOn = y !== null; if (y !== null) sliceY = y; applySlice(); draw(0); }, view: (a, e, z = 1, tg) => { az = a; el = e; zoom = z; if (tg) target.set(...tg); applyView(); draw(0); }, legs };
+window.__atat = { open: (id) => openCard(DEPTS.find((d) => d.id === id)), close: closeCard, get card() { return open && open.id; }, prints, fig, setSlice: (y) => { sliceOn = y !== null; if (y !== null) sliceY = y; applySlice(); draw(0); }, view: (a, e, z = 1, tg) => { az = a; el = e; zoom = z; target.set(...(tg ?? TARGET0)); applyView(); draw(0); }, legs };
 `;
 const css = `.at-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;font:11px/1.4 var(--anatomy-mono);color:var(--anatomy-muted)}
 .at-ctl button{padding:5px 9px;border:1px solid var(--anatomy-mid);background:transparent;color:var(--anatomy-muted);font:inherit;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}

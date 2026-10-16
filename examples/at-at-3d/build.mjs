@@ -150,7 +150,7 @@ function placeCard() {
   const W = stage.clientWidth, H = fig.renderer.domElement.clientHeight;
   av.set(...open.anchor); body.localToWorld(av); av.project(fig.camera);
   const ax = (av.x + 1) / 2 * W, ay = (1 - av.y) / 2 * H;
-  const cw = Math.min(250, W - 24), ch = card.offsetHeight || 160;
+  const cw = Math.min(250, W - 24); card.style.width = cw + "px"; card.style.maxHeight = (H - 16) + "px"; card.style.overflowY = "auto"; const ch = card.offsetHeight || 160;
   // the walker's box on screen, so the card sits clear of the subject when it can
   const boxOf = (xs, zs) => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const x of xs) for (const y of [-150, 150]) for (const z of zs) { bv.set(x, y, z); body.localToWorld(bv); bv.project(fig.camera);
@@ -166,7 +166,6 @@ function placeCard() {
   for (const [cx, cy] of cands) { if (cx < 0 || cy < 0 || cx + cw > W || cy + ch > H + 1) continue; const sc = overlap(cx, cy) * 4 + Math.hypot(cx + cw / 2 - ax, cy + ch / 2 - ay) * 40; if (sc < score) { score = sc; best = [cx, cy]; } }
   // hold still unless the better spot is clearly better, so the card does not jitter as the walker moves
   if (cardAt && Math.abs(cardAt[0] - best[0]) + Math.abs(cardAt[1] - best[1]) > 1) { const [ox, oy] = cardAt, old = overlap(ox, oy) * 4 + Math.hypot(ox + cw / 2 - ax, oy + ch / 2 - ay) * 40; if (old < score * 1.25 + 2000) best = cardAt; }
-  card.style.maxHeight = (H - 16) + "px"; card.style.overflowY = "auto";
   if (W < 520) best = [12, Math.max(8, H - ch - 8)];
   cardAt = best;
   const [cx, cy] = best;

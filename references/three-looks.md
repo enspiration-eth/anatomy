@@ -212,7 +212,7 @@ carries a quantity, and the live code drives that quantity through a uniform or 
 
 | Kind | Draws | Options | Use on | Fails when |
 |---|---|---|---|---|
-| `fiber` | wavy parallel striations with a matching bump, like muscle fibres | `seed`, `color` (default `#8e3030`), `waves` (bend count, 3) | myocardium, tendon, woven cable | it goes on a part that is also painted: `fig.paint` clones the material to white and the striations then tint the ramp, so keep painted parts untextured |
+| `fiber` | wavy fibre bundles with dark clefts, a pale sheen and a strong bump, wide enough to read at figure scale | `seed`, `color` (default `#8e3030`), `waves` (bend count, 3) | myocardium, tendon, woven cable | it goes on a part that is also painted: `fig.paint` clones the material to white and the striations then tint the ramp, so keep painted parts untextured |
 | `concrete` | theme grey with aggregate flecks and pore bump | `seed` | containments, basemats, pedestals, towers | it covers metal: rough 0.9 kills the environment's reflections, which is the point on concrete and wrong on steel |
 
 ### Shaders
@@ -235,6 +235,7 @@ uniform (`g.uniforms.uA.value.copy(colour)`) rather than reassigning it: the sha
 
 ### Sections with fill, coloured hatching, extrude holes
 
+- A textured wall you want to read as its material in section (the heart's fibre-textured muscle) can also take `cut: "solid"`. The cut then shows the lit, textured inside of the shell. A hatch would hide the texture.
 - `cut: "solid"`: a volume such as blood, coolant or a core is clipped at the section with no hatch cap and with lit
   backfaces, so its inside reads as filled. Use it for what flows inside a hatched wall; hatching blood would
   read as a solid.

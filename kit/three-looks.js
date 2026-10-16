@@ -186,19 +186,23 @@ export const TEXTURES = {
     const [c, g] = canvasOf(size), [b, gb] = canvasOf(size), rnd = seeded(seed);
     g.fillStyle = color; g.fillRect(0, 0, size, size);
     gb.fillStyle = "#909090"; gb.fillRect(0, 0, size, size);
-    for (let y = 0; y < size; y += 3 + rnd() * 3) {
-      const amp = 2 + rnd() * 4, ph = rnd() * 6.28, dark = 0.12 + rnd() * 0.18;
-      g.strokeStyle = `rgba(30,0,0,${dark})`; gb.strokeStyle = `rgba(20,20,20,${0.5 + rnd() * 0.3})`;
-      g.lineWidth = gb.lineWidth = 1 + rnd() * 1.2;
+    // Fibre bundles wide enough to read at a figure's scale: dark clefts between bundles, a pale sheen on each.
+    for (let y = 0; y < size; y += 9 + rnd() * 9) {
+      const amp = 3 + rnd() * 6, ph = rnd() * 6.28, dark = 0.35 + rnd() * 0.25;
+      g.strokeStyle = `rgba(25,0,4,${dark})`; gb.strokeStyle = `rgba(10,10,10,${0.7 + rnd() * 0.3})`;
+      g.lineWidth = gb.lineWidth = 2 + rnd() * 2.5;
       g.beginPath(); gb.beginPath();
       for (let x = 0; x <= size; x += 8) {
         const yy = y + Math.sin((x / size) * Math.PI * 2 * waves + ph) * amp;
         x ? (g.lineTo(x, yy), gb.lineTo(x, yy)) : (g.moveTo(x, yy), gb.moveTo(x, yy));
       }
       g.stroke(); gb.stroke();
+      g.strokeStyle = `rgba(255,190,180,${0.08 + rnd() * 0.1})`; g.lineWidth = 2; g.beginPath();
+      for (let x = 0; x <= size; x += 8) { const yy = y + 4 + Math.sin((x / size) * Math.PI * 2 * waves + ph) * amp; x ? g.lineTo(x, yy) : g.moveTo(x, yy); }
+      g.stroke();
     }
     for (let i = 0; i < size * 2; i++) { g.fillStyle = `rgba(255,220,220,${rnd() * 0.05})`; g.fillRect(rnd() * size, rnd() * size, 6 + rnd() * 20, 1); }
-    return { map: tex(c), bumpMap: tex(b, { srgb: false }), bumpScale: 0.5, plain: true };
+    return { map: tex(c), bumpMap: tex(b, { srgb: false }), bumpScale: 1.6, plain: true };
   },
   // Concrete: a cement ground with aggregate and pores; bump carries the pores. Theme-aware grey.
   concrete({ seed = 17, size = 1024, theme }) {

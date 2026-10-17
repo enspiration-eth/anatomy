@@ -2,6 +2,10 @@
 
 All notable changes to Anatomy are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); entries from before the first release are dated.
 
+## Edgeless snow and a true isometric view
+- The snow now runs to the horizon: the detailed footprint field flattens over its last 500 units onto a smooth blend apron, then four plain strips span 400 000 units (10x the old sheet; a plane is 2 triangles and no texture, so the cost is a handful of draw calls, ~18k apron triangles on desktop and ~4k on phones, and a longer far plane). No snow surfaces overlap, so nothing z-fights.
+- The Iso preset is now a real isometric view: the kit gives a perspective figure an orthographic twin (setOrtho), and Iso uses azimuth -135 at the isometric elevation asin(1/sqrt(3)) = 35.264 degrees. Measured on screen, the three world axes project to equal lengths (120.4 px each) 120 degrees apart, and a segment is the same size near and far. The other presets restore the cinematic perspective camera, which stays the default.
+
 ## Phones: a low-memory profile
 - Procedural textures are now cached and shared (seeds folded into a small pool). The AT-AT built about 324 separate texture maps (~340 Mpx, well over 1 GB of GPU memory with mipmaps), which crashed iOS Safari tabs; it now uses 72 (~76 Mpx) on desktop and 52 (~14 Mpx) on phones. Phones, coarse pointers and low-memory devices (or ?lowmem=1) get 512 px textures, a 1024 shadow map, no MSAA and fewer snowflakes; the pixel ratio stays capped at 1.5. A lost WebGL context shows a tap-to-reload note and reloads when the context comes back.
 

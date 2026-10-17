@@ -306,7 +306,12 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
   const { azimuth, elevation } = spec.camera;
   // camera.fov (degrees) asks for a perspective camera instead, framed like the orthographic one (same fitted width at the target)
   const fov = spec.camera.fov;
-  const camera = fov ? new THREE.PerspectiveCamera(fov, 1, radius * 0.01, radius * 40) : new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, radius * 20);
+  let camera = fov ? new THREE.PerspectiveCamera(fov, 1, radius * 0.01, radius * 40) : new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, radius * 20);
+  // a figure drawn with a perspective (cinematic) camera also gets an orthographic twin, so a preset can switch to a
+  // true isometric projection (parallel rays, no foreshortening with distance) and back without rebuilding the scene
+  const perspCamera = fov ? camera : null, orthoCamera = fov ? new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, radius * 20) : null;
+  let orthoMode = false;
+  if (orthoCamera) { orthoCamera.up.set(0, 0, 1); orthoCamera.position.copy(camera.position); }
   camera.up.set(0, 0, 1);
   const az = rad(azimuth), el = rad(elevation);
   const view = new THREE.Vector3(-Math.cos(el) * Math.sin(az), -Math.cos(el) * Math.cos(az), Math.sin(el));
@@ -328,7 +333,8 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     const aspect = width / height;
     const halfW = Math.max(w, h * aspect) / 2, halfH = halfW / aspect;
     const cx = (local.max.x + local.min.x) / 2, cy = (local.max.y + local.min.y) / 2;
-    if (fov) { camera.aspect = aspect; camera.userData.halfW ??= halfW; camera.updateProjectionMatrix(); return; }
+    camera.userData.aspect = aspect; if (orthoCamera) orthoCamera.userData.aspect = aspect;
+    if (fov && !orthoMode) { camera.aspect = aspect; camera.userData.halfW ??= halfW; if (orthoCamera) orthoCamera.userData.halfW = camera.userData.halfW; camera.updateProjectionMatrix(); return; }
     Object.assign(camera, { left: cx - halfW, right: cx + halfW, top: cy + halfH, bottom: cy - halfH });
     camera.updateProjectionMatrix();
   };
@@ -344,6 +350,16 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     /** The section plane (null without a section). setSection(at) moves it: parts with cut keep the side beyond `at`. */
     section,
     setSection: (at) => { if (section) section.constant = -at; },
+    /** Switches between the perspective camera and its orthographic twin (true isometric). False if there is no twin. */
+    setOrtho(on) {
+      if (!orthoCamera) return false;
+      orthoMode = !!on;
+      const next = orthoMode ? orthoCamera : perspCamera;
+      next.position.copy(camera.position); next.quaternion.copy(camera.quaternion); next.up.set(0, 0, 1);
+      camera = next; handle.camera = camera; camera.updateMatrixWorld();
+      return true;
+    },
+    get ortho() { return orthoMode; },
     /**
      * Orbits the camera: azimuth and elevation in degrees (any azimuth), about `target` (default the scene centre),
      * with `zoom` (1 = the fitted size). The frustum keeps the fitted width, centred on the target.
@@ -351,12 +367,12 @@ export function mountScene(stage, spec, { theme = "dark" } = {}) {
     view(azimuth, elevation, zoom = 1, target = centre) {
       const a = rad(azimuth), e = rad(elevation);
       const dir = new THREE.Vector3(-Math.cos(e) * Math.sin(a), -Math.cos(e) * Math.cos(a), Math.sin(e));
-      if (fov) {
+      if (fov && !orthoMode) {
         const tanH = Math.tan(rad(fov) / 2) * camera.aspect;
         camera.position.copy(target).add(dir.multiplyScalar(camera.userData.halfW / tanH / zoom));
         camera.lookAt(target); camera.updateMatrixWorld(); camera.updateProjectionMatrix(); return;
       }
-      const halfW = (camera.userData.halfW ??= (camera.right - camera.left) / 2), aspect = (camera.right - camera.left) / (camera.top - camera.bottom);
+      const halfW = (camera.userData.halfW ??= (camera.right - camera.left) / 2), aspect = camera.userData.aspect ?? ((camera.right - camera.left) / (camera.top - camera.bottom));
       Object.assign(camera, { left: -halfW, right: halfW, top: halfW / aspect, bottom: -halfW / aspect, zoom });
       camera.position.copy(target).add(new THREE.Vector3(-Math.cos(e) * Math.sin(a), -Math.cos(e) * Math.cos(a), Math.sin(e)).multiplyScalar(radius * 6));
       camera.lookAt(target);

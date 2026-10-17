@@ -28,9 +28,30 @@ const P = (id) => fig.parts.get(id), dark = fig.theme === "dark";
   fig.scene.traverse((o) => { if (o.isHemisphereLight) { o.intensity *= dark ? 0.7 : 0.5; o.color.set(dark ? "#d3d8e0" : "#e9edf2"); o.groundColor.set(dark ? "#4a4c50" : "#9a9890"); }
     if (o.isDirectionalLight) { o.color.set("#fff3e6"); o.intensity *= dark ? 1.45 : 0.85; } });
   const rim = new THREE.DirectionalLight(dark ? "#d6e2f5" : "#e8eef8", dark ? 2.0 : 1.5); rim.position.set(-900, 700, 520); fig.scene.add(rim);
-  // an endless snow plain round the live heightfield, so its edges never show
-  const plainMat = new THREE.MeshStandardMaterial({ color: dark ? "#eef2f8" : "#eef2f7", roughness: 0.95 });
-  const plainMesh = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), plainMat); plainMesh.position.z = -16; plainMesh.name = "snowplain"; plainMesh.receiveShadow = true; fig.scene.add(plainMesh);
+  // Snow beyond the detailed field: one 400 000-unit plain (10x the old one: 4 vertices, 2 triangles, no texture, one
+  // draw call — size costs nothing; only the far plane grows) at z -4, plus a blend apron that slopes smoothly from
+  // the live heightfield's edge down to it, so the field's slab edge no longer shows as a rectangle when zoomed out.
+  const plainMat = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.9 }); // same colour and roughness as the snowfield, so the seam does not show
+  // the outer plain is four flat strips beyond the apron (not one sheet under everything, see below), so no two snow
+  // surfaces ever overlap and z-fight; together they span 400 000 units (10x the old 40 000 sheet)
+  fig.camera.far = Math.max(fig.camera.far, 500000); fig.camera.updateProjectionMatrix();
+  {
+    // four indexed grid strips (smooth normals) sloping from the field's edge height down to the outer plain; the
+    // fall is a smoothstep of the distance outside the field, so there is no crease at either end
+    const B = fig.lowMemory ? 2400 : 6000, hw = GROUND.w / 2, hd = GROUND.d / 2;
+    const strip = (w, d, sx, sy, at) => {
+      const geo = new THREE.PlaneGeometry(w, d, Math.max(8, Math.round(w / 150)), Math.max(8, Math.round(d / 150))), pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) { const x = pos.getX(i) + at[0], y = pos.getY(i) + at[1], dist = Math.hypot(Math.max(Math.abs(x) - hw, 0), Math.max(Math.abs(y) - hd, 0)), t = Math.min(dist / B, 1); pos.setZ(i, 1 - 5 * t * t * (3 - 2 * t)); }
+      geo.computeVertexNormals();
+      const nor = geo.attributes.normal; // force the rim normals vertical, so the apron meets the field and the plain with no shading seam
+      for (let i = 0; i < pos.count; i++) { const x = pos.getX(i) + at[0], y = pos.getY(i) + at[1], dist = Math.hypot(Math.max(Math.abs(x) - hw, 0), Math.max(Math.abs(y) - hd, 0)); if (dist < 1 || dist > B - 1) nor.setXYZ(i, 0, 0, 1); }
+      const mesh = new THREE.Mesh(geo, plainMat); mesh.position.set(at[0], at[1], 0); mesh.name = "snowapron"; mesh.receiveShadow = true; fig.scene.add(mesh);
+    };
+    for (const s of [-1, 1]) { strip(B, GROUND.d + 2 * B, 0, 0, [s * (hw + B / 2), 0]); strip(GROUND.w, B, 0, 0, [0, s * (hd + B / 2)]); }
+    // flat outer plain strips from the apron's rim (z -4) out to +/-200 000
+    const OUT = 200000, flat = (w, d, x, y) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), plainMat); m.position.set(x, y, -4); m.name = "snowplain"; m.receiveShadow = true; fig.scene.add(m); };
+    for (const s of [-1, 1]) { flat(OUT - hw - B, 2 * OUT, s * (hw + B + (OUT - hw - B) / 2), 0); flat(GROUND.w + 2 * B, OUT - hd - B, 0, s * (hd + B + (OUT - hd - B) / 2)); }
+  }
   const fill = new THREE.DirectionalLight("#9fb3cc", 0.5); fill.position.set(400, -800, 200); fig.scene.add(fill);
   // light bounced up off the snow onto the belly
   const bounce = new THREE.DirectionalLight("#e8eef6", dark ? 0.5 : 0.32); bounce.position.set(150, 250, -700); fig.scene.add(bounce);
@@ -80,7 +101,10 @@ function sway(time) {
 // ---------- snow ground
 const R = 58;
 function snowHeight(x, y) {
-  let z = 2.4 * Math.sin((x + travelled) * 0.013) * Math.cos(y * 0.021) + 1.6 * Math.sin((x + travelled) * 0.031 + y * 0.017) + 1;
+  // the waves flatten out over the last 500 units of the field, so it meets the smooth blend apron at a constant
+  // height (z 1) with no visible seam; footprints only ever occur near the middle, where the fade is 1
+  const ef = Math.min(1, Math.max(0, Math.min(GROUND.w / 2 - Math.abs(x), GROUND.d / 2 - Math.abs(y)) / 500)), es = ef * ef * (3 - 2 * ef);
+  let z = 1 + (2.4 * Math.sin((x + travelled) * 0.013) * Math.cos(y * 0.021) + 1.6 * Math.sin((x + travelled) * 0.031 + y * 0.017)) * es;
   for (const p of prints) {
     const dx = x - p.x, dy = y - p.y; if (dx > 80 || dx < -80 || dy > 80 || dy < -80) continue;
     const r = Math.hypot(dx, dy), fade = Math.exp(-p.age / 30);
@@ -110,7 +134,12 @@ function snowfall(dt) {
 // ---------- camera
 // a camera looking up must stay above the snow: lift the elevation until it does
 function keepAboveSnow() { const p = fig.camera.position, d = p.distanceTo(target); if (p.z < 30 && d > 0) { el = Math.asin(Math.max(-1, Math.min(1, (30 - target.z) / d))) * 180 / Math.PI; fig.view(az, el, zoom, target); } }
-function applyView() { fig.view(az, el, zoom, target); keepAboveSnow(); const d = fig.camera.position.distanceTo(target); if (fig.scene.fog) { fig.scene.fog.near = d * 1.1; fig.scene.fog.far = d * 5; } }
+function applyView() { fig.view(az, el, zoom, target); keepAboveSnow(); const cam = fig.camera;
+  // in the orthographic (isometric) view the camera sits far away by construction, so fog follows the equivalent
+  // perspective distance instead, or the walker would fog out
+  const d = fig.ortho ? (cam.userData.halfW ?? 1800) / (0.268 * ((cam.right - cam.left) / (cam.top - cam.bottom))) / zoom : cam.position.distanceTo(target);
+  // the orthographic camera sits radius*6 away, so shift the fog band by that physical distance minus the equivalent one
+  if (fig.scene.fog) { const off = fig.ortho ? cam.position.distanceTo(target) - d : 0; fig.scene.fog.near = off + d * 1.1; fig.scene.fog.far = off + d * 5; } }
 // ---------- section
 function applySlice() {
   fig.setSection(sliceOn ? sliceY : -2000);
@@ -215,7 +244,8 @@ stage.addEventListener("pointerup", (e) => {
 });
 stage.addEventListener("pointerleave", () => { if (hover && (!open || open.id !== hover.id)) highlight(hover.id, false); hover = null; runner.kick(); });
 stage.addEventListener("wheel", (e) => { e.preventDefault(); tour.touch(); zoom = clamp(zoom * Math.exp(-e.deltaY * 0.0015), 1.2, 8); applyView(); runner.kick(); }, { passive: false });
-const setView = (k) => { target.set(...TARGET0); if (k === "side") { az = 0; el = 3; zoom = 2.4; } else if (k === "front") { az = -90; el = 5; zoom = 2.5; } else if (k === "low") { az = 24; el = -18; zoom = 4.6; target.set(20, 0, 330); } else { az = 36; el = 2; zoom = 2.9; } applyView(); };
+const ISO_EL = 35.264; // true isometric elevation: asin(1/sqrt(3))
+const setView = (k) => { target.set(...TARGET0); if (k === "iso") { fig.setOrtho(true); az = -135; el = ISO_EL; zoom = 2.6; applyView(); return; } fig.setOrtho(false); if (k === "side") { az = 0; el = 3; zoom = 2.4; } else if (k === "front") { az = -90; el = 5; zoom = 2.5; } else if (k === "low") { az = 24; el = -18; zoom = 4.6; target.set(20, 0, 330); } else { az = 36; el = 2; zoom = 2.9; } applyView(); };
 viewBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); setView(b.dataset.view); runner.kick(); }));
 deptBtns.forEach((b) => b.addEventListener("click", () => { tour.touch(); const d = DEPTS.find((q) => q.id === b.dataset.dept); if (open && open.id === d.id) closeCard(); else openCard(d); }));
 sliceBtn?.addEventListener("click", () => { tour.touch(); sliceOn = !sliceOn; applySlice(); runner.kick(); });
